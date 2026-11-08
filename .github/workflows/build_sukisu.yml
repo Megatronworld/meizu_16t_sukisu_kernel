@@ -1,0 +1,48 @@
+name: Build Meizu 16T SukiSU Ultra Kernel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. 检出内核源码
+        run: |
+          git clone --depth=1 https://github.com/mrlj147/android_meizu_kernel_sm8150.git . -b master
+
+      - name: 2. 安装编译依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc git wget python3 zip
+
+      - name: 3. 配置 AOSP Clang 编译工具链
+        run: |
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/clang-r353983c toolchain
+
+      - name: 4. 集成 SukiSU Ultra 源码
+        run: |
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
+
+      - name: 5. 开始编译内核
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export PATH="$(pwd)/toolchain/bin:$PATH"
+          mkdir -p out
+          make O=out msm_defconfig
+          make O=out -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
+
+      - name: 6. 打包为 AnyKernel3 刷机包
+        run: |
+          git clone https://github.com/kernel-makers/AnyKernel3.git anykernel
+          rm -rf anykernel/.git
+          cp out/arch/arm64/boot/Image.gz-dtb anykernel/
+          cd anykernel
+          zip -r9 ../Meizu-16T-SukiSU-Ultra-Kernel.zip *
+
+      - name: 7. 上传刷机包构件
+        uses: actions/upload-artifact@v4
+        with:
+          name: Meizu-16T-SukiSU-Ultra-Kernel
+          path: Meizu-16T-SukiSU-Ultra-Kernel.zip
