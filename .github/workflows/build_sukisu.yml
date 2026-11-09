@@ -16,20 +16,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld git
 
-      - name: 3. 下载 AOSP Clang 工具链 (使用稳定公开镜像)
+      - name: 3. 下载 AOSP Clang 工具链
         run: |
           mkdir -p toolchain
-          # 使用稳定、不需要鉴权的公开 Clang 仓库
           git clone --depth=1 https://gitlab.com/Leona-Sec/aosp-clang.git toolchain || git clone --depth=1 https://github.com/ZyCromerZ/Clang.git toolchain || git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r383902b.git toolchain
 
-      - name: 4. 下载集成 SukiSU Ultra 源码
+      - name: 4. 下载集成 SukiSU Ultra 源码 (改用 git clone 避免 404)
         run: |
-          mkdir -p sukisu
-          wget https://github.com/rsuntk/SukiSU-Ultra/archive/refs/heads/main.zip -O sukisu.zip
-          unzip -q sukisu.zip
-          mv SukiSU-Ultra-main sukisu_source
-          if [ -f sukisu_source/kernel/setup.sh ]; then
-            bash sukisu_source/kernel/setup.sh
+          git clone --depth=1 https://github.com/rsuntk/SukiSU-Ultra.git sukisu_source
+          if [ -d sukisu_source/kernel ]; then
+            if [ -f sukisu_source/kernel/setup.sh ]; then
+              bash sukisu_source/kernel/setup.sh
+            else
+              cp -rf sukisu_source/kernel/* ./
+            fi
           else
             cp -rf sukisu_source/* ./
           fi
