@@ -18,7 +18,7 @@ jobs:
 
       - name: 3. 配置 AOSP Clang 编译工具链
         run: |
-          git clone --depth=1 https://github.com/chenfengru/aosp-clang.git toolchain
+          git clone --depth=1 -b main https://github.com/chenfengru/aosp-clang.git toolchain
 
       - name: 4. 集成 SukiSU Ultra 源码
         run: |
