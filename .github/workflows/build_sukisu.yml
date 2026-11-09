@@ -19,13 +19,19 @@ jobs:
       - name: 3. 配置 AOSP Clang 编译工具链
         run: |
           mkdir -p toolchain
-          wget -O clang.tar.gz "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+/refs/heads/master/clang-r353983c?format=TAR" || true
-          # 如果上面官方链接不行，我们直接从国内可用通道下载稳定版 Clang
           git clone --depth=1 https://github.com/TravMurav/aosp-clang.git toolchain || git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain
 
       - name: 4. 集成 SukiSU Ultra 源码
         run: |
-          curl -LSs "https://raw.githubusercontent.com/rsuntk/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
+          # 直接把 SukiSU 源码克隆并放到内核的 drivers 目录下或执行通用集成
+          git clone https://github.com/rsuntk/SukiSU-Ultra.git sukisu
+          if [ -f sukisu/kernel/setup.sh ]; then
+            bash sukisu/kernel/setup.sh main
+          else
+            echo "Using manual integration..."
+            # 如果没有 setup.sh，可以直接复制 drivers
+            cp -rf sukisu/kernel/* ./
+          fi
 
       - name: 5. 开始编译内核
         run: |
