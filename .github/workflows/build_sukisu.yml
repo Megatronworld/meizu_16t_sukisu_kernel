@@ -14,7 +14,7 @@ jobs:
       - name: 2. 安装编译依赖
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld git
 
       - name: 3. V7-下载 AOSP Clang 工具链 (已成功)
         run: |
@@ -27,11 +27,9 @@ jobs:
             sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
           fi
 
-      - name: 4. V8-下载集成 SukiSU Ultra 源码 (修复分支为 master)
+      - name: 4. V9-下载集成 SukiSU Ultra 源码 (使用 git clone 自动适配分支)
         run: |
-          wget https://github.com/rsuntk/SukiSU-Ultra/archive/refs/heads/master.zip -O sukisu.zip
-          unzip -q sukisu.zip
-          mv SukiSU-Ultra-master sukisu_source
+          git clone --depth=1 https://github.com/rsuntk/SukiSU-Ultra.git sukisu_source
           if [ -d sukisu_source/kernel ]; then
             cp -rf sukisu_source/kernel/* ./
           else
