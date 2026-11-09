@@ -16,22 +16,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld
 
-      - name: 3. 配置 AOSP Clang 编译工具链
+      - name: 3. 下载 AOSP Clang 工具链 (使用稳定压缩包直连)
         run: |
           mkdir -p toolchain
-          git clone --depth=1 https://github.com/TravMurav/aosp-clang.git toolchain || git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain
+          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r416183b.tar.gz -O clang.tar.gz || wget https://github.com/chenxiaolong/CPUs/releases/download/v1.0/aosp-clang.tar.gz -O clang.tar.gz || true
+          if [ -f clang.tar.gz ]; then
+            tar -C toolchain -xzf clang.tar.gz || true
+          fi
+          # 备用方案：如果上面没下成功，直接从轻量仓库克隆
+          if [ ! -f "toolchain/bin/clang" ]; then
+            git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r383902b.git toolchain
+          fi
 
-      - name: 4. 集成 SukiSU Ultra 源码
+      - name: 4. 下载集成 SukiSU Ultra 源码
         run: |
-          git clone https://github.com/rsuntk/SukiSU-Ultra.git sukisu || true
-          if [ -d sukisu/kernel ]; then
-            if [ -f sukisu/kernel/setup.sh ]; then
-              bash sukisu/kernel/setup.sh
-            else
-              cp -rf sukisu/kernel/* ./
-            fi
+          mkdir -p sukisu
+          wget https://github.com/rsuntk/SukiSU-Ultra/archive/refs/heads/main.zip -O sukisu.zip
+          unzip -q sukisu.zip
+          mv SukiSU-Ultra-main sukisu_source
+          if [ -f sukisu_source/kernel/setup.sh ]; then
+            bash sukisu_source/kernel/setup.sh
           else
-            cp -rf sukisu/* ./ || echo "Failed to copy sukisu"
+            cp -rf sukisu_source/* ./
           fi
 
       - name: 5. 编译前修复兼容性与 VDSO 问题
@@ -48,7 +54,7 @@ jobs:
           
           make O=out "$CONFIG_NAME"
           
-          # 核心修复：直接在生成的 .config 中关闭 VDSO，彻底避开报错的 vdso 编译
+          # 关闭 VDSO 彻底避开仿真报错
           if grep -q "CONFIG_VDSO=y" out/.config; then
             sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO is not set/g' out/.config
           fi
@@ -75,7 +81,7 @@ jobs:
 
       - name: 7. 打包为 AnyKernel3 刷机包
         run: |
-          git clone https://github.com/kernel-sakers/AnyKernel3.git anykernel
+          git clone --depth=1 https://github.com/kernel-sakers/AnyKernel3.git anykernel
           rm -rf anykernel/.git
           IMG_PATH=$(find out/ -name "Image.gz-dtb" -o -name "Image" | head -n 1)
           cp "$IMG_PATH" anykernel/Image.gz-dtb
