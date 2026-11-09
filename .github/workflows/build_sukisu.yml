@@ -14,7 +14,7 @@ jobs:
       - name: 2. 安装编译依赖
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld
 
       - name: 3. 配置 AOSP Clang 编译工具链
         run: |
@@ -48,11 +48,15 @@ jobs:
           
           make O=out "$CONFIG_NAME"
           
-          # 使用修复后的编译参数（指定 HOSTLD 和 LD 避免链接器仿真报错，并通过 CFLAGS 兼容多重定义）
+          # 终极修复：使用 LLVM 链接器 (ld.lld) 编译所有目标，避免 x86_64 链接器仿真报错
           make O=out -j$(nproc) \
             CC=clang \
             LD=ld.lld \
-            HOSTLD=ld.bfd \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-android- \
             CROSS_COMPILE_ARM32=arm-linux-androideabi- \
