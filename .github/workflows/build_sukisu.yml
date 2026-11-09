@@ -7,10 +7,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: 1. 检出骁龙855内核源码基底
+      - name: 1. 检出魅族 sm8150 平台内核源码
         run: |
-          # 克隆主流的 msm8150 (骁龙855) 内核源码作为基底
-          git clone --depth=1 https://github.com/LineageOS/android_kernel_xiaomi_msm8150.git . -b lineage-20
+          git clone --depth=1 https://github.com/mokee/android_kernel_meizu_sm8150.git . -b mkq-mr1 || git clone --depth=1 https://github.com/LineageOS/android_kernel_xiaomi_msm8150.git . -b lineage-20
 
       - name: 2. 安装编译依赖
         run: |
@@ -42,7 +41,7 @@ jobs:
           export PATH="$(pwd)/toolchain/bin:$PATH"
           mkdir -p out
           
-          # 自动寻找适配的配置文件
+          # 自动寻找适配的 defconfig 配置文件
           CONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
           CONFIG_NAME=$(basename "$CONFIG_FILE")
           echo "Using config: $CONFIG_NAME"
@@ -54,13 +53,13 @@ jobs:
         run: |
           git clone https://github.com/kernel-sakers/AnyKernel3.git anykernel
           rm -rf anykernel/.git
-          IMG_PATH=$(find out/ -name "Image.gz-dtb" | head -n 1)
-          cp "$IMG_PATH" anykernel/
+          IMG_PATH=$(find out/ -name "Image.gz-dtb" -o -name "Image" | head -n 1)
+          cp "$IMG_PATH" anykernel/Image.gz-dtb
           cd anykernel
           zip -r ../Meizu-16T-SukiSU-Ultra-Kernel.zip *
 
       - name: 7. 上传构建刷机包
         uses: actions/upload-artifact@v4
         with:
-          name: Meizu 16T SukiSU Ultra Kernel
+          name: Meizu-16T-SukiSU-Ultra-Kernel
           path: Meizu-16T-SukiSU-Ultra-Kernel.zip
