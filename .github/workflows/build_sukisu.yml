@@ -34,7 +34,7 @@ jobs:
             cp -rf sukisu/* ./ || echo "Failed to copy sukisu"
           fi
 
-      - name: 5. 开始编译内核
+      - name: 5. 编译前修复兼容性与 VDSO 问题
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -48,7 +48,18 @@ jobs:
           
           make O=out "$CONFIG_NAME"
           
-          # 终极修复：使用 LLVM 链接器 (ld.lld) 编译所有目标，避免 x86_64 链接器仿真报错
+          # 核心修复：直接在生成的 .config 中关闭 VDSO，彻底避开报错的 vdso 编译
+          if grep -q "CONFIG_VDSO=y" out/.config; then
+            sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO is not set/g' out/.config
+          fi
+          echo "CONFIG_VDSO=n" >> out/.config
+
+      - name: 6. 开始编译内核
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export PATH="$(pwd)/toolchain/bin:$PATH"
+          
           make O=out -j$(nproc) \
             CC=clang \
             LD=ld.lld \
@@ -62,7 +73,7 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-androideabi- \
             HOSTCFLAGS="-std=gnu89"
 
-      - name: 6. 打包为 AnyKernel3 刷机包
+      - name: 7. 打包为 AnyKernel3 刷机包
         run: |
           git clone https://github.com/kernel-sakers/AnyKernel3.git anykernel
           rm -rf anykernel/.git
@@ -71,7 +82,7 @@ jobs:
           cd anykernel
           zip -r ../Meizu-16T-SukiSU-Ultra-Kernel.zip *
 
-      - name: 7. 上传构建刷机包
+      - name: 8. 上传构建刷机包
         uses: actions/upload-artifact@v4
         with:
           name: Meizu-16T-SukiSU-Ultra-Kernel
