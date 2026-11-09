@@ -16,16 +16,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld
 
-      - name: 3. V6-下载 AOSP Clang 工具链 (wget直连)
+      - name: 3. V7-下载 AOSP Clang 工具链 (更换稳定镜像源)
         run: |
           mkdir -p toolchain
-          wget https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r383902b/archive/refs/heads/main.zip -O clang.zip || true
-          if [ -f clang.zip ]; then
-            unzip -q clang.zip
-            mv android_prebuilts_clang_host_linux-x86_clang-r383902b-main/* toolchain/ || true
+          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android12-release/clang-r416183b.tar.gz -O clang.tar.gz || wget https://github.com/X0RW/AOSP-Clang/releases/download/17.0.4/clang-17.0.4.tar.gz -O clang.tar.gz || true
+          if [ -f clang.tar.gz ]; then
+            tar -C toolchain -xzf clang.tar.gz || true
+          fi
+          # 如果上面没解压成功，直接用 apt 安装系统自带的 gcc-aarch64
+          if [ ! -f "toolchain/bin/clang" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
           fi
 
-      - name: 4. V6-下载集成 SukiSU Ultra 源码 (wget直连)
+      - name: 4. V7-下载集成 SukiSU Ultra 源码 (wget直连)
         run: |
           wget https://github.com/rsuntk/SukiSU-Ultra/archive/refs/heads/main.zip -O sukisu.zip
           unzip -q sukisu.zip
@@ -54,18 +57,25 @@ jobs:
           
           make O=out "$CONFIG_NAME"
           
-          make O=out -j$(nproc) \
-            CC=clang \
-            LD=ld.lld \
-            AR=llvm-ar \
-            NM=llvm-nm \
-            OBJCOPY=llvm-objcopy \
-            OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=aarch64-linux-android- \
-            CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-            HOSTCFLAGS="-std=gnu89"
+          if [ -f "toolchain/bin/clang" ]; then
+            make O=out -j$(nproc) \
+              CC=clang \
+              LD=ld.lld \
+              AR=llvm-ar \
+              NM=llvm-nm \
+              OBJCOPY=llvm-objcopy \
+              OBJDUMP=llvm-objdump \
+              STRIP=llvm-strip \
+              CLANG_TRIPLE=aarch64-linux-gnu- \
+              CROSS_COMPILE=aarch64-linux-android- \
+              CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+              HOSTCFLAGS="-std=gnu89"
+          else
+            make O=out -j$(nproc) \
+              ARCH=arm64 \
+              CROSS_COMPILE=aarch64-linux-gnu- \
+              HOSTCFLAGS="-std=gnu89"
+          fi
 
       - name: 7. 打包为 AnyKernel3 刷机包
         run: |
