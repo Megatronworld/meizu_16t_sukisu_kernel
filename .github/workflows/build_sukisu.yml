@@ -47,7 +47,16 @@ jobs:
           echo "Using config: $CONFIG_NAME"
           
           make O=out "$CONFIG_NAME"
-          make O=out -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
+          
+          # 使用修复后的编译参数（指定 HOSTLD 和 LD 避免链接器仿真报错，并通过 CFLAGS 兼容多重定义）
+          make O=out -j$(nproc) \
+            CC=clang \
+            LD=ld.lld \
+            HOSTLD=ld.bfd \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-android- \
+            CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+            HOSTCFLAGS="-std=gnu89"
 
       - name: 6. 打包为 AnyKernel3 刷机包
         run: |
