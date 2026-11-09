@@ -23,13 +23,12 @@ jobs:
 
       - name: 4. 集成 SukiSU Ultra 源码
         run: |
-          # 直接把 SukiSU 源码克隆并放到内核的 drivers 目录下或执行通用集成
-          git clone https://github.com/rsuntk/SukiSU-Ultra.git sukisu
+          wget -O sukisu.zip https://github.com/rsuntk/SukiSU-Ultra/archive/refs/heads/main.zip
+          unzip sukisu.zip
+          mv SukiSU-Ultra-main sukisu
           if [ -f sukisu/kernel/setup.sh ]; then
             bash sukisu/kernel/setup.sh main
           else
-            echo "Using manual integration..."
-            # 如果没有 setup.sh，可以直接复制 drivers
             cp -rf sukisu/kernel/* ./
           fi
 
