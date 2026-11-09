@@ -23,7 +23,6 @@ jobs:
 
       - name: 4. 集成 SukiSU Ultra 源码
         run: |
-          # 使用不带分支限制的克隆，自动获取默认分支
           git clone https://github.com/rsuntk/SukiSU-Ultra.git sukisu || true
           if [ -d sukisu/kernel ]; then
             if [ -f sukisu/kernel/setup.sh ]; then
@@ -32,7 +31,6 @@ jobs:
               cp -rf sukisu/kernel/* ./
             fi
           else
-            echo "SukiSU kernel folder not found, checking root..."
             cp -rf sukisu/* ./ || echo "Failed to copy sukisu"
           fi
 
@@ -42,7 +40,19 @@ jobs:
           export SUBARCH=arm64
           export PATH="$(pwd)/toolchain/bin:$PATH"
           mkdir -p out
-          make O=out msm_defconfig
+          
+          # 自动寻找 arch/arm64/configs 下可用的 defconfig
+          echo "Available configs:"
+          ls arch/arm64/configs/
+          
+          # 尝试使用通用的机型配置或查找包含 meizu / 16 / 8150 的配置文件
+          CONFIG_NAME=$(ls arch/arm64/configs/ | grep -E "meizu|16|msm|sdm" | head -n 1)
+          if [ -z "$CONFIG_NAME" ]; then
+            CONFIG_NAME=$(ls arch/arm64/configs/ | head -n 1)
+          fi
+          echo "Using config: $CONFIG_NAME"
+          
+          make O=out $CONFIG_NAME
           make O=out -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
       - name: 6. 打包为 AnyKernel3 刷机包
