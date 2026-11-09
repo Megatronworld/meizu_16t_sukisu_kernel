@@ -16,23 +16,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld
 
-      - name: 3. V7-下载 AOSP Clang 工具链 (更换稳定镜像源)
+      - name: 3. V7-下载 AOSP Clang 工具链 (已成功)
         run: |
           mkdir -p toolchain
           wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android12-release/clang-r416183b.tar.gz -O clang.tar.gz || wget https://github.com/X0RW/AOSP-Clang/releases/download/17.0.4/clang-17.0.4.tar.gz -O clang.tar.gz || true
           if [ -f clang.tar.gz ]; then
             tar -C toolchain -xzf clang.tar.gz || true
           fi
-          # 如果上面没解压成功，直接用 apt 安装系统自带的 gcc-aarch64
           if [ ! -f "toolchain/bin/clang" ]; then
             sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
           fi
 
-      - name: 4. V7-下载集成 SukiSU Ultra 源码 (wget直连)
+      - name: 4. V8-下载集成 SukiSU Ultra 源码 (修复分支为 master)
         run: |
-          wget https://github.com/rsuntk/SukiSU-Ultra/archive/refs/heads/main.zip -O sukisu.zip
+          wget https://github.com/rsuntk/SukiSU-Ultra/archive/refs/heads/master.zip -O sukisu.zip
           unzip -q sukisu.zip
-          mv SukiSU-Ultra-main sukisu_source
+          mv SukiSU-Ultra-master sukisu_source
           if [ -d sukisu_source/kernel ]; then
             cp -rf sukisu_source/kernel/* ./
           else
