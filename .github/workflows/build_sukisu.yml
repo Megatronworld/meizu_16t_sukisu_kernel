@@ -41,16 +41,17 @@ jobs:
           export PATH="$(pwd)/toolchain/bin:$PATH"
           mkdir -p out
           
-          # 自动寻找 arch/arm64/configs 下可用的 defconfig
-          echo "Available configs:"
-          ls arch/arm64/configs/
+          # 打印当前目录结构以排查配置文件位置
+          echo "Current directory contents:"
+          ls -la
           
-          # 尝试使用通用的机型配置或查找包含 meizu / 16 / 8150 的配置文件
-          CONFIG_NAME=$(ls arch/arm64/configs/ | grep -E "meizu|16|msm|sdm" | head -n 1)
-          if [ -z "$CONFIG_NAME" ]; then
-            CONFIG_NAME=$(ls arch/arm64/configs/ | head -n 1)
-          fi
-          echo "Using config: $CONFIG_NAME"
+          # 寻找仓库中所有带有 defconfig 的文件
+          find . -name "*defconfig"
+          
+          # 自动寻找第一个可用的 defconfig 文件名
+          CONFIG_FILE=$(find . -name "*defconfig" | head -n 1)
+          CONFIG_NAME=$(basename "$CONFIG_FILE")
+          echo "Found config: $CONFIG_NAME"
           
           make O=out $CONFIG_NAME
           make O=out -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
