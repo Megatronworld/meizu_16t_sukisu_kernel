@@ -7,9 +7,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: 1. 检出内核源码
+      - name: 1. 检出骁龙855内核源码基底
         run: |
-          git clone --depth=1 https://github.com/Megatronworld/meizu_16t_sukisu_kernel.git . -b main
+          # 克隆主流的 msm8150 (骁龙855) 内核源码作为基底
+          git clone --depth=1 https://github.com/LineageOS/android_kernel_xiaomi_msm8150.git . -b lineage-20
 
       - name: 2. 安装编译依赖
         run: |
@@ -41,26 +42,10 @@ jobs:
           export PATH="$(pwd)/toolchain/bin:$PATH"
           mkdir -p out
           
-          echo "=== 检查工作空间根目录内容 ==="
-          ls -la
-          
-          echo "=== 检查是否有任何子目录包含 kernel 或 Makefile ==="
-          find . -maxdepth 2 -ls
-          
-          # 尝试直接查找带有 msm 或 16t 的 defconfig
-          CONFIG_FILE=$(find . -name "*defconfig" | head -n 1)
-          if [ -z "$CONFIG_FILE" ]; then
-            echo "Error: No defconfig found anywhere in the repository!"
-            exit 1
-          fi
-          
-          CONFIG_DIR=$(dirname "$CONFIG_FILE")
+          # 自动寻找适配的配置文件
+          CONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
           CONFIG_NAME=$(basename "$CONFIG_FILE")
-          KERNEL_SRC_DIR=$(cd "$CONFIG_DIR/../.." && pwd)
-          
-          echo "Found config at: $CONFIG_FILE"
-          echo "Switching to kernel source root: $KERNEL_SRC_DIR"
-          cd "$KERNEL_SRC_DIR"
+          echo "Using config: $CONFIG_NAME"
           
           make O=out "$CONFIG_NAME"
           make O=out -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
@@ -69,7 +54,7 @@ jobs:
         run: |
           git clone https://github.com/kernel-sakers/AnyKernel3.git anykernel
           rm -rf anykernel/.git
-          IMG_PATH=$(find . -name "Image.gz-dtb" | head -n 1)
+          IMG_PATH=$(find out/ -name "Image.gz-dtb" | head -n 1)
           cp "$IMG_PATH" anykernel/
           cd anykernel
           zip -r ../Meizu-16T-SukiSU-Ultra-Kernel.zip *
