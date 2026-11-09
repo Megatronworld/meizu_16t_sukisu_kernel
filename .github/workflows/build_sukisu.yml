@@ -14,18 +14,13 @@ jobs:
       - name: 2. 安装编译依赖
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld git
 
-      - name: 3. 下载 AOSP Clang 工具链
+      - name: 3. 下载 AOSP Clang 工具链 (使用稳定公开镜像)
         run: |
           mkdir -p toolchain
-          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r416183b.tar.gz -O clang.tar.gz || wget https://github.com/chenxiaolong/CPUs/releases/download/v1.0/aosp-clang.tar.gz -O clang.tar.gz || true
-          if [ -f clang.tar.gz ]; then
-            tar -C toolchain -xzf clang.tar.gz || true
-          fi
-          if [ ! -f "toolchain/bin/clang" ]; then
-            git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r383902b.git toolchain
-          fi
+          # 使用稳定、不需要鉴权的公开 Clang 仓库
+          git clone --depth=1 https://gitlab.com/Leona-Sec/aosp-clang.git toolchain || git clone --depth=1 https://github.com/ZyCromerZ/Clang.git toolchain || git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r383902b.git toolchain
 
       - name: 4. 下载集成 SukiSU Ultra 源码
         run: |
@@ -48,7 +43,7 @@ jobs:
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH="$(pwd)/toolchain/bin:$PATH"
+          export PATH="$(pwd)/toolchain/bin:$(pwd)/toolchain/llvm/bin:$PATH"
           mkdir -p out
           
           CONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
