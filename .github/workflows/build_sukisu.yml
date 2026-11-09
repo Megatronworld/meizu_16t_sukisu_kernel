@@ -41,17 +41,19 @@ jobs:
           export PATH="$(pwd)/toolchain/bin:$PATH"
           mkdir -p out
           
-          # 打印当前目录结构以排查配置文件位置
-          echo "Current directory contents:"
-          ls -la
+          # 递归列出所有文件和目录，寻找 Makefile 确认内核源码根目录
+          echo "Finding Makefile in workspace:"
+          find . -name "Makefile" -maxdepth 3
           
-          # 寻找仓库中所有带有 defconfig 的文件
-          find . -name "*defconfig"
+          # 如果 Makefile 在子目录，自动切换进去
+          KERNEL_DIR=$(dirname $(find . -name "Makefile" | head -n 1))
+          echo "Kernel source root is at: $KERNEL_DIR"
+          cd "$KERNEL_DIR" || exit 1
           
-          # 自动寻找第一个可用的 defconfig 文件名
+          # 寻找配置文件
           CONFIG_FILE=$(find . -name "*defconfig" | head -n 1)
           CONFIG_NAME=$(basename "$CONFIG_FILE")
-          echo "Found config: $CONFIG_NAME"
+          echo "Using config: $CONFIG_NAME"
           
           make O=out $CONFIG_NAME
           make O=out -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
@@ -60,7 +62,9 @@ jobs:
         run: |
           git clone https://github.com/kernel-sakers/AnyKernel3.git anykernel
           rm -rf anykernel/.git
-          cp out/arch/arm64/boot/Image.gz-dtb anykernel/
+          # 寻找编译出来的 Image.gz-dtb
+          IMG_PATH=$(find . -name "Image.gz-dtb" | head -n 1)
+          cp "$IMG_PATH" anykernel/
           cd anykernel
           zip -r ../Meizu-16T-SukiSU-Ultra-Kernel.zip *
 
