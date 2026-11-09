@@ -16,14 +16,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld
 
-      - name: 3. 下载 AOSP Clang 工具链 (使用稳定压缩包直连)
+      - name: 3. 下载 AOSP Clang 工具链
         run: |
           mkdir -p toolchain
           wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r416183b.tar.gz -O clang.tar.gz || wget https://github.com/chenxiaolong/CPUs/releases/download/v1.0/aosp-clang.tar.gz -O clang.tar.gz || true
           if [ -f clang.tar.gz ]; then
             tar -C toolchain -xzf clang.tar.gz || true
           fi
-          # 备用方案：如果上面没下成功，直接从轻量仓库克隆
           if [ ! -f "toolchain/bin/clang" ]; then
             git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r383902b.git toolchain
           fi
@@ -40,31 +39,23 @@ jobs:
             cp -rf sukisu_source/* ./
           fi
 
-      - name: 5. 编译前修复兼容性与 VDSO 问题
+      - name: 5. 暴力删除 VDSO 目录以彻底杜绝报错
         run: |
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export PATH="$(pwd)/toolchain/bin:$PATH"
-          mkdir -p out
-          
-          # 自动寻找适配的 defconfig 配置文件
-          CONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
-          CONFIG_NAME=$(basename "$CONFIG_FILE")
-          echo "Using config: $CONFIG_NAME"
-          
-          make O=out "$CONFIG_NAME"
-          
-          # 关闭 VDSO 彻底避开仿真报错
-          if grep -q "CONFIG_VDSO=y" out/.config; then
-            sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO is not set/g' out/.config
-          fi
-          echo "CONFIG_VDSO=n" >> out/.config
+          rm -rf arch/arm64/kernel/vdso
+          rm -rf arch/arm64/vdso
 
       - name: 6. 开始编译内核
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
           export PATH="$(pwd)/toolchain/bin:$PATH"
+          mkdir -p out
+          
+          CONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
+          CONFIG_NAME=$(basename "$CONFIG_FILE")
+          echo "Using config: $CONFIG_NAME"
+          
+          make O=out "$CONFIG_NAME"
           
           make O=out -j$(nproc) \
             CC=clang \
