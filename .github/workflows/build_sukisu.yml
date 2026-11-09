@@ -23,13 +23,17 @@ jobs:
 
       - name: 4. 集成 SukiSU Ultra 源码
         run: |
-          wget -O sukisu.zip https://github.com/rsuntk/SukiSU-Ultra/archive/refs/heads/main.zip
-          unzip sukisu.zip
-          mv SukiSU-Ultra-main sukisu
-          if [ -f sukisu/kernel/setup.sh ]; then
-            bash sukisu/kernel/setup.sh main
+          # 使用不带分支限制的克隆，自动获取默认分支
+          git clone https://github.com/rsuntk/SukiSU-Ultra.git sukisu || true
+          if [ -d sukisu/kernel ]; then
+            if [ -f sukisu/kernel/setup.sh ]; then
+              bash sukisu/kernel/setup.sh
+            else
+              cp -rf sukisu/kernel/* ./
+            fi
           else
-            cp -rf sukisu/kernel/* ./
+            echo "SukiSU kernel folder not found, checking root..."
+            cp -rf sukisu/* ./ || echo "Failed to copy sukisu"
           fi
 
       - name: 5. 开始编译内核
