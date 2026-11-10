@@ -14,7 +14,7 @@ jobs:
       - name: 2. 安装完整编译依赖与 arm64 交叉工具链
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
       - name: 3. 下载 AOSP Clang 工具链 (已验证成功)
         run: |
@@ -37,12 +37,10 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 5. 绝对保持 Makefile 原汁原味，只部署安全桩
+      - name: 5. 保持 Makefile 纯净并部署安全桩
         run: |
-          # 核心修复：把 Makefile 和 arch/arm64/Makefile 全部恢复到 100% 官方纯净状态
           git checkout Makefile arch/arm64/Makefile || true
 
-          # 构筑 VDSO 桩与 gcc-plugins 桩
           mkdir -p arch/arm64/kernel/vdso scripts include/generated
           echo "obj-y :=" > arch/arm64/kernel/vdso/Makefile
           touch arch/arm64/kernel/vdso/vdso.lds
@@ -51,7 +49,7 @@ jobs:
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 6. 开始编译内核 (纯净源码环境，全速冲刺)
+      - name: 6. 开始编译内核 (引入 GNU 汇编器 AS 彻底解决汇编报错)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -78,11 +76,12 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 并行构建内核主体
+          # 核心修复：显式指定 AS=aarch64-linux-gnu-as，规避 Clang 集成汇编器在旧内核上的崩溃
           make O=out -j$(nproc) \
             CC=clang \
             HOSTCC=gcc \
             HOSTCXX=g++ \
+            AS=aarch64-linux-gnu-as \
             LD=ld.lld \
             AR=llvm-ar \
             NM=llvm-nm \
