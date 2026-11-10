@@ -40,18 +40,22 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 5. 主动创建空的 vdso 结构文件以满足编译系统寻找
+      - name: 5. 彻底剥离 arch/arm64/Makefile 中的 vdso_prepare 目标
         run: |
-          mkdir -p arch/arm64/kernel/vdso
-          echo "obj-y :=" > arch/arm64/kernel/vdso/Makefile
-          touch arch/arm64/kernel/vdso/vdso.lds
-          touch arch/arm64/kernel/vdso/vdso.S
+          # 核心修复：直接将 arch/arm64/Makefile 中包含 vdso_prepare 的目标行及其后两行全部清空或删除
+          if [ -f "arch/arm64/Makefile" ]; then
+            sed -i '/vdso_prepare:/,+3d' arch/arm64/Makefile || true
+            sed -i '/vdso_prepare/d' arch/arm64/Makefile || true
+          fi
           
           if [ -f "Makefile" ]; then
             sed -i '/gcc-plugins/d' Makefile || true
           fi
 
-      - name: 6. 开始编译内核 (全速冲刺)
+          mkdir -p arch/arm64/kernel/vdso
+          echo "obj-y :=" > arch/arm64/kernel/vdso/Makefile
+
+      - name: 6. 开始编译内核 (冲刺并行编译)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
