@@ -46,7 +46,7 @@ jobs:
           mkdir -p arch/arm64/kernel/vdso
           touch arch/arm64/kernel/vdso/Makefile
 
-      - name: 6. 开始编译内核 (在配置生成后再彻底禁用插件和 vdso 编译)
+      - name: 6. 开始编译内核 (修复脚本语法错误)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -59,7 +59,7 @@ jobs:
           
           make O=out "$CONFIG_NAME"
           
-          # 核心修复：在 oldconfig 之后，强制修改 .config 彻底关掉 gcc-plugins 和 vdso
+          # 核心修复：安全写入配置选项关闭插件和 VDSO
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO32=y/# CONFIG_VDSO32 is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO is not set/g' out/.config || true
@@ -68,10 +68,10 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 再次确保 Makefile 不会去递归调用报错的目录
+          # 确保 Makefile 不会去递归调用报错的插件目录（修复了大括号语法错误）
           if [ -f "scripts/Makefile.gcc-plugins" ]; then
             echo "" > scripts/Makefile.gcc-plugins
-          }
+          fi
           
           make O=out -j$(nproc) \
             CC=clang \
