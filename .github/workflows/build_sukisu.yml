@@ -11,20 +11,12 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/mokee/android_kernel_meizu_sm8150.git . -b mkq-mr1 || git clone --depth=1 https://github.com/LineageOS/android_kernel_xiaomi_msm8150.git . -b lineage-20
 
-      - name: 2. 安装完整编译依赖与 arm64 交叉工具链
+      - name: 2. 安装完备的 GCC 交叉编译与构建依赖
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 下载 AOSP Clang 工具链 (已验证成功)
-        run: |
-          mkdir -p toolchain
-          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android12-release/clang-r416183b.tar.gz -O clang.tar.gz || true
-          if [ -f clang.tar.gz ]; then
-            tar -C toolchain -xzf clang.tar.gz || true
-          fi
-
-      - name: 4. 下载集成 SukiSU 源码 (已验证成功)
+      - name: 3. 下载集成 SukiSU 源码 (已验证成功)
         run: |
           wget https://github.com/tiann/KernelSU/archive/refs/heads/main.zip -O sukisu.zip || wget https://github.com/rsuntk/SukiSU-Ultra/archive/refs/heads/main.zip -O sukisu.zip
           unzip -q sukisu.zip
@@ -37,7 +29,7 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 5. 保持 Makefile 纯净并部署安全桩
+      - name: 4. 保持 Makefile 纯净并部署安全桩
         run: |
           git checkout Makefile arch/arm64/Makefile || true
 
@@ -49,11 +41,10 @@ jobs:
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 6. 开始编译内核 (加入 -fno-integrated-as 彻底打通汇编关卡)
+      - name: 5. 开始编译内核 (全面使用标准 GCC 交叉编译链，告别 Clang 兼容性烦恼)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH="$(pwd)/toolchain/bin:$PATH"
           mkdir -p out
           
           CONFIG_FILE=$(find arch/arm64/configs -name "*meizu*" -o -name "*sm8150*" -o -name "*defconfig" | head -n 1)
@@ -64,6 +55,7 @@ jobs:
           
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/g' out/.config || true
           sed -i 's/CONFIG_HAVE_GCC_PLUGINS=y/# CONFIG_HAVE_GCC_PLUGINS is not set/g' out/.config || true
+          sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO=y/g' out/.config || true # 占位
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO32=y/# CONFIG_VDSO32 is not set/g' out/.config || true
           sed -i 's/CONFIG_KASAN=y/# CONFIG_KASAN is not set/g' out/.config || true
@@ -76,26 +68,17 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 核心修复：通过 KCFLAGS 传入 -fno-integrated-as，强制 Clang 走外部 GNU 汇编器
+          # 核心大招：使用标准的 aarch64-linux-gnu-gcc 编译内核，完美契合旧版内核架构
           make O=out -j$(nproc) \
-            CC=clang \
+            CC=aarch64-linux-gnu-gcc \
             HOSTCC=gcc \
             HOSTCXX=g++ \
-            AS=aarch64-linux-gnu-as \
-            LD=ld.lld \
-            AR=llvm-ar \
-            NM=llvm-nm \
-            OBJCOPY=llvm-objcopy \
-            OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            KCFLAGS="-fno-integrated-as" \
             HOSTCFLAGS="-std=gnu89 -fcommon" \
             CONFIG_NO_ERROR_ON_MISMATCH=y
 
-      - name: 7. 打包为 AnyKernel3 刷机包
+      - name: 6. 打包为 AnyKernel3 刷机包
         run: |
           git clone --depth=1 https://github.com/kernel-sakers/AnyKernel3.git anykernel
           rm -rf anykernel/.git
@@ -104,7 +87,7 @@ jobs:
           cd anykernel
           zip -r ../Meizu-16T-SukiSU-Ultra-Kernel.zip *
 
-      - name: 8. 上传构建刷机包
+      - name: 7. 上传构建刷机包
         uses: actions/upload-artifact@v4
         with:
           name: Meizu-16T-SukiSU-Ultra-Kernel
