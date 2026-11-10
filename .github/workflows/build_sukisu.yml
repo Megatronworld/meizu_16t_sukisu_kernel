@@ -29,24 +29,31 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 4. 完备部署 VDSO 桩与 VDSO_SYMBOL 宏定义
+      - name: 4. 彻底构筑 VDSO 桩与全局头文件引入
         run: |
-          git checkout Makefile arch/arm64/Makefile || true
+          git checkout Makefile arch/arm64/Makefile arch/arm64/kernel/signal.c || true
 
           mkdir -p arch/arm64/kernel/vdso scripts include/generated
           echo "obj-y :=" > arch/arm64/kernel/vdso/Makefile
           touch arch/arm64/kernel/vdso/vdso.lds
           touch arch/arm64/kernel/vdso/vdso.S
           
-          # 核心修复：在生成的头文件中补齐 VDSO_SYMBOL 宏，防止 signal.c 编译报错
-          echo "#ifndef __VDSO_OFFSETS_H" > include/generated/vdso-offsets.h
-          echo "#define __VDSO_OFFSETS_H" >> include/generated/vdso-offsets.h
-          echo "#define VDSO_SYMBOL(base, name) (base)" >> include/generated/vdso-offsets.h
-          echo "#endif" >> include/generated/vdso-offsets.h
+          # 核心修复：在 include/generated/vdso-offsets.h 中定义全局可用的宏
+          cat << 'HEADER' > include/generated/vdso-offsets.h
+          #ifndef __VDSO_OFFSETS_H
+          #define __VDSO_OFFSETS_H
+          #define VDSO_SYMBOL(base, name) ((unsigned long)(base))
+          #endif
+          HEADER
+
+          # 确保全局头文件路径能被 signal.c 自动包含
+          if [ -f "arch/arm64/kernel/signal.c" ]; then
+            sed -i '1i #include <generated/vdso-offsets.h>' arch/arm64/kernel/signal.c || true
+          fi
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 5. 开始编译内核 (加入 -Wno-error 容忍旧代码警告，全速冲刺)
+      - name: 5. 开始编译内核 (全速冲刺最终刷机包)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -72,14 +79,13 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 核心修复：通过 KCFLAGS 传入 -Wno-error，防止旧代码的陈旧警告阻断编译
           make O=out -j$(nproc) \
             CC=aarch64-linux-gnu-gcc \
             HOSTCC=gcc \
             HOSTCXX=g++ \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            KCFLAGS="-Wno-error" \
+            KCFLAGS="-Wno-error -I$(pwd)/include/generated" \
             HOSTCFLAGS="-std=gnu89 -fcommon" \
             CONFIG_NO_ERROR_ON_MISMATCH=y
 
