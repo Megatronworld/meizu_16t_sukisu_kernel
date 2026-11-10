@@ -40,20 +40,19 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 5. 预先清空 VDSO 目录
-        run: |
-          rm -rf arch/arm64/kernel/vdso
-          mkdir -p arch/arm64/kernel/vdso
-          touch arch/arm64/kernel/vdso/Makefile
-
-      - name: 6. 开始编译内核 (直接从 Makefile 根源抹除 gcc-plugins 依赖)
+      - name: 5. 开始编译内核 (精准抹除 arm64 的 vdso_prepare 编译目标)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
           export PATH="$(pwd)/toolchain/bin:$PATH"
           mkdir -p out
           
-          # 核心修复：直接从顶层 Makefile 中删掉所有带有 gcc-plugins 的行，防止 prepare0 报错
+          # 核心修复：直接将 arch/arm64/Makefile 中的 vdso_prepare 规则置空
+          if [ -f "arch/arm64/Makefile" ]; then
+            sed -i '/vdso_prepare:/,/^\s*$/d' arch/arm64/Makefile || true
+            sed -i 's/core-y\s*+=.*vdso/ /g' arch/arm64/Makefile || true
+          fi
+          
           sed -i '/gcc-plugins/d' Makefile || true
           
           CONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
