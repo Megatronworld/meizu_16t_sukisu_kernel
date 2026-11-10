@@ -46,12 +46,15 @@ jobs:
           mkdir -p arch/arm64/kernel/vdso
           touch arch/arm64/kernel/vdso/Makefile
 
-      - name: 6. 开始编译内核 (修复脚本语法错误)
+      - name: 6. 开始编译内核 (直接从 Makefile 根源抹除 gcc-plugins 依赖)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
           export PATH="$(pwd)/toolchain/bin:$PATH"
           mkdir -p out
+          
+          # 核心修复：直接从顶层 Makefile 中删掉所有带有 gcc-plugins 的行，防止 prepare0 报错
+          sed -i '/gcc-plugins/d' Makefile || true
           
           CONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
           CONFIG_NAME=$(basename "$CONFIG_FILE")
@@ -59,7 +62,6 @@ jobs:
           
           make O=out "$CONFIG_NAME"
           
-          # 核心修复：安全写入配置选项关闭插件和 VDSO
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO32=y/# CONFIG_VDSO32 is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO is not set/g' out/.config || true
@@ -67,11 +69,6 @@ jobs:
           echo "CONFIG_VDSO=n" >> out/.config
           
           yes "" | make O=out oldconfig
-          
-          # 确保 Makefile 不会去递归调用报错的插件目录（修复了大括号语法错误）
-          if [ -f "scripts/Makefile.gcc-plugins" ]; then
-            echo "" > scripts/Makefile.gcc-plugins
-          fi
           
           make O=out -j$(nproc) \
             CC=clang \
