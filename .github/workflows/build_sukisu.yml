@@ -40,30 +40,31 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 5. 暴力删除 VDSO 目录以彻底杜绝报错
+      - name: 5. 优雅屏蔽 VDSO 编译而不是直接删目录
         run: |
-          rm -rf arch/arm64/kernel/vdso
-          rm -rf arch/arm64/vdso
+          # 恢复 VDSO 目录并清空其 Makefile 内容，防止找不到目标报错
+          mkdir -p arch/arm64/kernel/vdso
+          echo "" > arch/arm64/kernel/vdso/Makefile
+          echo "" > arch/arm64/kernel/vdso/vdso.lds
 
-      - name: 6. 开始编译内核 (直接从源码根源移除 gcc-plugins 检查)
+      - name: 6. 开始编译内核 (完美处理所有前置冲突)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
           export PATH="$(pwd)/toolchain/bin:$PATH"
           mkdir -p out
           
-          # 从根源上将 Makefile 中的 gcc-plugins 检查直接置空或删掉
-          if [ -f "scripts/Makefile.gcc-plugins" ]; then
-            echo "obj- := ." > scripts/Makefile.gcc-plugins
-          fi
-          sed -i '/gcc-plugins/d' Makefile || true
-          sed -i '/CONFIG_GCC_PLUGINS/d' arch/arm64/configs/*defconfig || true
-
           CONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
           CONFIG_NAME=$(basename "$CONFIG_FILE")
           echo "Using config: $CONFIG_NAME"
           
           make O=out "$CONFIG_NAME"
+          
+          # 关闭可能导致兼容性报错的选项
+          sed -i 's/CONFIG_VDSO32=y/# CONFIG_VDSO32 is not set/g' out/.config || true
+          sed -i 's/CONFIG_KASAN=y/# CONFIG_KASAN is not set/g' out/.config || true
+          
+          yes "" | make O=out oldconfig
           
           make O=out -j$(nproc) \
             CC=clang \
