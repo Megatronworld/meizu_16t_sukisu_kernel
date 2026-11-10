@@ -37,8 +37,11 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 5. 深度净化 Makefile 并构筑完备桩规则
+      - name: 5. 恢复原生 Makefile 并构建安全桩
         run: |
+          # 核心修复：完全恢复顶层 Makefile，绝不破坏其语法
+          git checkout Makefile arch/arm64/Makefile || true
+
           # 构筑 VDSO 桩与头文件
           mkdir -p arch/arm64/kernel/vdso scripts include/generated
           echo "obj-y :=" > arch/arm64/kernel/vdso/Makefile
@@ -46,21 +49,16 @@ jobs:
           touch arch/arm64/kernel/vdso/vdso.S
           touch include/generated/vdso-offsets.h
 
-          # 完备定义 gcc-plugins 目标
+          # 使用标准 Tab 缩进编写 scripts/Makefile.gcc-plugins 桩规则
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-          # 清理顶层 Makefile 中所有残留的报错依赖
-          if [ -f "Makefile" ]; then
-            sed -i '/gcc-plugins/d' Makefile || true
-            sed -i '/vdso/d' Makefile || true
-          fi
-
+          # 仅安全重写架构层 vdso_prepare
           if [ -f "arch/arm64/Makefile" ]; then
             sed -i '/--fix-cortex-a53-843419/s/^/#/' arch/arm64/Makefile || true
             sed -i '/vdso_prepare:/,/^\s*$/c\vdso_prepare:\n\t@true' arch/arm64/Makefile || true
           fi
 
-      - name: 6. 开始编译内核 (修正 scripts 目标并行冲刺)
+      - name: 6. 开始编译内核 (原生 Makefile 护航，全速冲刺)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -87,10 +85,10 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 核心修复：将单独编译 dtc 改为编译通用的 scripts 目标
-          make O=out -j$(nproc) scripts HOSTCC=gcc HOSTCXX=g++ HOSTCFLAGS="-std=gnu89 -fcommon" || true
+          # 先单独安全构建 dtc 主机工具
+          make O=out -j$(nproc) scripts/dtc HOSTCC=gcc HOSTCXX=g++ HOSTCFLAGS="-std=gnu89 -fcommon" || true
           
-          # 全速编译内核主体
+          # 全速并行编译内核主体
           make O=out -j$(nproc) \
             CC=clang \
             HOSTCC=gcc \
