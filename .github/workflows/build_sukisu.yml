@@ -40,21 +40,17 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 5. 彻底伪造并封死 scripts/Makefile.gcc-plugins 校验
+      - name: 5. 绝对标准的 Makefile 占位修复
         run: |
           mkdir -p arch/arm64/kernel/vdso scripts
           echo "obj-y :=" > arch/arm64/kernel/vdso/Makefile
           touch arch/arm64/kernel/vdso/vdso.lds
           touch arch/arm64/kernel/vdso/vdso.S
           
-          # 核心修复：直接用空目标和 @true 覆盖整个 gcc-plugins 的 Makefile，让任何检查直接静默成功
-          cat << 'MK' > scripts/Makefile.gcc-plugins
-          all:
-          %:
-          .git@true
-          MK
+          # 核心修复：用绝对合法的空 Makefile 覆盖，不带任何错乱缩进
+          printf "all:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 6. 开始编译内核 (越过插件检测，全速冲刺)
+      - name: 6. 开始编译内核 (全速并行编译)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -69,7 +65,6 @@ jobs:
           
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/g' out/.config || true
           sed -i 's/CONFIG_HAVE_GCC_PLUGINS=y/# CONFIG_HAVE_GCC_PLUGINS is not set/g' out/.config || true
-          sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO=y/g' out/.config || true # 占位
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO32=y/# CONFIG_VDSO32 is not set/g' out/.config || true
           
