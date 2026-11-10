@@ -29,7 +29,7 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 4. 精简 VDSO 桩，只保留偏移量常量防重定义
+      - name: 4. 部署 VDSO 桩与防重定义宏
         run: |
           git checkout Makefile arch/arm64/Makefile arch/arm64/kernel/signal.c || true
 
@@ -39,7 +39,6 @@ jobs:
 
           touch arch/arm64/kernel/vdso/vdso.S
           
-          # 核心修复：只定义偏移量，不重复定义 VDSO_SYMBOL 宏，避免冲突
           cat << 'HEADER' > include/generated/vdso-offsets.h
           #ifndef __VDSO_OFFSETS_H
           #define __VDSO_OFFSETS_H
@@ -50,7 +49,7 @@ jobs:
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 5. 开始编译内核 (全速冲刺最终刷机包)
+      - name: 5. 开始编译内核 (加入 -Wno-array-bounds 突破 setup.c 编译限制)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -76,13 +75,14 @@ jobs:
           
           yes "" | make O=out oldconfig
           
+          # 核心修复：通过 KCFLAGS 追加 -Wno-array-bounds 和 -Wno-stringop-overflow
           make O=out -j$(nproc) \
             CC=aarch64-linux-gnu-gcc \
             HOSTCC=gcc \
             HOSTCXX=g++ \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            KCFLAGS="-Wno-error" \
+            KCFLAGS="-Wno-error -Wno-array-bounds -Wno-stringop-overflow" \
             HOSTCFLAGS="-std=gnu89 -fcommon" \
             CONFIG_NO_ERROR_ON_MISMATCH=y
 
