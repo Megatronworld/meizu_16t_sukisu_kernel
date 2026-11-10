@@ -56,7 +56,7 @@ jobs:
             sed -i '/vdso_prepare:/,/^\s*$/c\vdso_prepare:\n\t@true' arch/arm64/Makefile || true
           fi
 
-      - name: 6. 分步安全编译（先编主机工具，再并行编译内核）
+      - name: 6. 开始编译内核 (单次规范并行编译)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -83,10 +83,7 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 第一阶段：强制使用纯 GCC 编译所有 scripts 主机工具，彻底规避 clang 编译 dtc 报错
-          make O=out -j$(nproc) scripts HOSTCC=gcc HOSTCXX=g++ CC=gcc HOSTCFLAGS="-std=gnu89 -fcommon"
-          
-          # 第二阶段：全速并行编译内核核心源码
+          # 核心修复：HOSTCC 使用 gcc 编译主机工具（带 -fcommon），目标内核使用 clang 编译，各司其职
           make O=out -j$(nproc) \
             CC=clang \
             HOSTCC=gcc \
