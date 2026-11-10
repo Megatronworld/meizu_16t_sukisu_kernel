@@ -49,7 +49,7 @@ jobs:
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 6. 开始编译内核 (引入 GNU 汇编器 AS 彻底解决汇编报错)
+      - name: 6. 开始编译内核 (加入 -fno-integrated-as 彻底打通汇编关卡)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -76,7 +76,7 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 核心修复：显式指定 AS=aarch64-linux-gnu-as，规避 Clang 集成汇编器在旧内核上的崩溃
+          # 核心修复：通过 KCFLAGS 传入 -fno-integrated-as，强制 Clang 走外部 GNU 汇编器
           make O=out -j$(nproc) \
             CC=clang \
             HOSTCC=gcc \
@@ -91,6 +91,7 @@ jobs:
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             CLANG_TRIPLE=aarch64-linux-gnu- \
+            KCFLAGS="-fno-integrated-as" \
             HOSTCFLAGS="-std=gnu89 -fcommon" \
             CONFIG_NO_ERROR_ON_MISMATCH=y
 
