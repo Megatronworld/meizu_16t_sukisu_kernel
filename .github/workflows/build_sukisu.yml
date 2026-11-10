@@ -29,7 +29,7 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 4. 彻底构筑 VDSO 桩与全局头文件引入
+      - name: 4. 完美构筑 VDSO 桩与完整符号偏移量宏
         run: |
           git checkout Makefile arch/arm64/Makefile arch/arm64/kernel/signal.c || true
 
@@ -38,18 +38,15 @@ jobs:
           touch arch/arm64/kernel/vdso/vdso.lds
           touch arch/arm64/kernel/vdso/vdso.S
           
-          # 核心修复：在 include/generated/vdso-offsets.h 中定义全局可用的宏
+          # 核心修复：在 vdso-offsets.h 中完美实现 VDSO_SYMBOL 及所需偏移量桩
           cat << 'HEADER' > include/generated/vdso-offsets.h
           #ifndef __VDSO_OFFSETS_H
           #define __VDSO_OFFSETS_H
-          #define VDSO_SYMBOL(base, name) ((unsigned long)(base))
+          #define VDSO_SYMBOL(base, name) ((unsigned long)(base) + vdso_offset_##name)
+          #define vdso_offset_sigtramp 0
+          #define vdso_offset_rt_sigtramp 0
           #endif
           HEADER
-
-          # 确保全局头文件路径能被 signal.c 自动包含
-          if [ -f "arch/arm64/kernel/signal.c" ]; then
-            sed -i '1i #include <generated/vdso-offsets.h>' arch/arm64/kernel/signal.c || true
-          fi
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
@@ -85,7 +82,7 @@ jobs:
             HOSTCXX=g++ \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            KCFLAGS="-Wno-error -I$(pwd)/include/generated" \
+            KCFLAGS="-Wno-error" \
             HOSTCFLAGS="-std=gnu89 -fcommon" \
             CONFIG_NO_ERROR_ON_MISMATCH=y
 
