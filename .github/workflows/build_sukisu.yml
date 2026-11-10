@@ -29,30 +29,22 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 4. 完美构筑 VDSO 桩与正确 Tab 缩进的 Makefile
+      - name: 4. 精简 VDSO 桩，只保留偏移量常量防重定义
         run: |
           git checkout Makefile arch/arm64/Makefile arch/arm64/kernel/signal.c || true
 
           mkdir -p arch/arm64/kernel/vdso scripts include/generated
           
-          # 核心修复：使用 printf 严格写入带真实 Tab 的 VDSO Makefile
           printf "targets := vdso.lds\n\$(obj)/vdso.lds:\n\t@touch \$@\n\nquiet_cmd_ar = AR      \$@\n      cmd_ar = rm -f \$@ && \$(AR) cqs \$@\n\n\$(obj)/builtin.a:\n\t\$(call cmd_ar)\n\nobj-y := vdso.o\n\$(obj)/vdso.o:\n\t@touch \$@\n" > arch/arm64/kernel/vdso/Makefile
 
           touch arch/arm64/kernel/vdso/vdso.S
           
-          # 防重定义保护的 vdso-offsets.h
+          # 核心修复：只定义偏移量，不重复定义 VDSO_SYMBOL 宏，避免冲突
           cat << 'HEADER' > include/generated/vdso-offsets.h
           #ifndef __VDSO_OFFSETS_H
           #define __VDSO_OFFSETS_H
-          #ifndef VDSO_SYMBOL
-          #define VDSO_SYMBOL(base, name) ((unsigned long)(base) + vdso_offset_##name)
-          #endif
-          #ifndef vdso_offset_sigtramp
           #define vdso_offset_sigtramp 0
-          #endif
-          #ifndef vdso_offset_rt_sigtramp
           #define vdso_offset_rt_sigtramp 0
-          #endif
           #endif
           HEADER
 
