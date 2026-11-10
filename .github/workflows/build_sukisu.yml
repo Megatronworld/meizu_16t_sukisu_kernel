@@ -27,15 +27,20 @@ jobs:
             sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
           fi
 
-      - name: 4. V13-使用国内稳定镜像克隆 SukiSU 源码
+      - name: 4. V14-使用 curl/wget 从镜像站直接下载并安全解压 SukiSU
         run: |
-          # 尝试通过免鉴权的公开镜像或备用源获取
-          git clone --depth=1 https://github.com/rsuntk/SukiSU.git sukisu_source || git clone --depth=1 https://github.com/tiann/KernelSU.git sukisu_source
-          if [ -d sukisu_source/kernel ]; then
-            cp -rf sukisu_source/kernel/* ./
+          # 换用完全公开、无需任何鉴权的备用压缩包源
+          wget https://github.com/tiann/KernelSU/archive/refs/heads/main.zip -O sukisu.zip || wget https://github.com/rsuntk/SukiSU-Ultra/archive/refs/heads/main.zip -O sukisu.zip
+          unzip -q sukisu.zip
+          # 自动寻找解压出来的文件夹并安全合并
+          EXTRACTED_DIR=$(find . -maxdepth 1 -type d \( -name "KernelSU-*" -o -name "SukiSU-*" \))
+          if [ -d "$EXTRACTED_DIR/kernel" ]; then
+            rm -rf kernel/ksu
+            cp -rf "$EXTRACTED_DIR/kernel" kernel/
           else
-            cp -rf sukisu_source/* ./
+            cp -rf "$EXTRACTED_DIR"/* ./
           fi
+          rm -rf sukisu.zip "$EXTRACTED_DIR"
 
       - name: 5. 暴力删除 VDSO 目录以彻底杜绝报错
         run: |
