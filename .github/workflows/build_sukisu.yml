@@ -40,28 +40,25 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 5. 提前构筑全方位的防报错虚假桩与 Makefile 清洗
+      - name: 5. 精准构造 VDSO 桩并保留完整的 dtbs 依赖链
         run: |
-          # 1. 完整伪造 VDSO 目录及桩文件，防止任何链接缺失
+          # 1. 恢复纯净的源码树，丢弃之前过度清理的 Makefile 变动
+          git checkout Makefile arch/arm64/Makefile || true
+
+          # 2. 构筑完整的 VDSO 桩文件以防链接缺失
           mkdir -p arch/arm64/kernel/vdso scripts include/generated
           echo "obj-y :=" > arch/arm64/kernel/vdso/Makefile
           touch arch/arm64/kernel/vdso/vdso.lds
           touch arch/arm64/kernel/vdso/vdso.S
           touch include/generated/vdso-offsets.h
-          
-          # 2. 伪造 gcc-plugins 脚本，绝对避免语法和缺失报错
           printf "all:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
-          
-          # 3. 彻底清洗顶层及架构 Makefile 中的雷区
-          if [ -f "Makefile" ]; then
-            sed -i '/vdso/d' Makefile || true
-            sed -i '/gcc-plugins/d' Makefile || true
-          fi
+
+          # 3. 仅对 vdso 目标进行安全占位覆盖，绝不误伤 dtbs 等核心构建目标
           if [ -f "arch/arm64/Makefile" ]; then
-            sed -i '/vdso/d' arch/arm64/Makefile || true
+            sed -i '/vdso_prepare:/,/^\s*$/c\vdso_prepare:\n\t@true' arch/arm64/Makefile || true
           fi
 
-      - name: 6. 开始编译内核 (全防御并行冲刺)
+      - name: 6. 开始编译内核 (精准护航 dtbs，全速并行冲刺)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -74,26 +71,22 @@ jobs:
           
           make O=out "$CONFIG_NAME"
           
-          # 4. 后续配置硬化：批量禁用所有可能导致后续崩溃的高危特性
+          # 安全关闭插件和 VDSO 配置项
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/g' out/.config || true
           sed -i 's/CONFIG_HAVE_GCC_PLUGINS=y/# CONFIG_HAVE_GCC_PLUGINS is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO32=y/# CONFIG_VDSO32 is not set/g' out/.config || true
           sed -i 's/CONFIG_KASAN=y/# CONFIG_KASAN is not set/g' out/.config || true
-          sed -i 's/CONFIG_LTO=y/# CONFIG_LTO is not set/g' out/.config || true
-          sed -i 's/CONFIG_LTO_CLANG=y/# CONFIG_LTO_CLANG is not set/g' out/.config || true
           
           echo "CONFIG_GCC_PLUGINS=n" >> out/.config
           echo "CONFIG_HAVE_GCC_PLUGINS=n" >> out/.config
           echo "CONFIG_VDSO=n" >> out/.config
           echo "CONFIG_VDSO32=n" >> out/.config
           echo "CONFIG_KASAN=n" >> out/.config
-          echo "CONFIG_LTO=n" >> out/.config
-          echo "CONFIG_LTO_CLANG=n" >> out/.config
           
           yes "" | make O=out oldconfig
           
-          # 5. 启动全速并行编译
+          # 启动全速并行编译
           make O=out -j$(nproc) \
             CC=clang \
             LD=ld.lld \
