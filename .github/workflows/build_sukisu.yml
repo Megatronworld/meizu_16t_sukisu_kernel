@@ -40,7 +40,7 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 5. 暴力剥离顶层 Makefile 中的 gcc-plugins 依赖
+      - name: 5. 净化 Makefile 并精准注释 vdso_prepare 目标
         run: |
           mkdir -p arch/arm64/kernel/vdso scripts
           echo "obj-y :=" > arch/arm64/kernel/vdso/Makefile
@@ -48,9 +48,14 @@ jobs:
           touch arch/arm64/kernel/vdso/vdso.S
           printf "all:\n\t@true\n" > scripts/Makefile.gcc-plugins
           
-          # 核心修复：直接将顶层 Makefile 中所有提到 gcc-plugins 的行整行删除，彻底断开依赖
+          # 清除顶层 Makefile 的 gcc-plugins
           if [ -f "Makefile" ]; then
             sed -i '/gcc-plugins/d' Makefile || true
+          fi
+          
+          # 核心修复：将 arch/arm64/Makefile 中的 vdso_prepare 目标改写为直接返回成功，避免语法报错
+          if [ -f "arch/arm64/Makefile" ]; then
+            sed -i '/vdso_prepare:/,/^\s*$/c\vdso_prepare:\n\t@true' arch/arm64/Makefile || true
           fi
 
       - name: 6. 开始编译内核 (全速冲刺并行编译)
