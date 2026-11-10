@@ -40,25 +40,27 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 5. 精准构造 VDSO 桩并保留完整的 dtbs 依赖链
+      - name: 5. 构筑完备的 VDSO 与 gcc-plugins 桩规则
         run: |
-          # 1. 恢复纯净的源码树，丢弃之前过度清理的 Makefile 变动
+          # 恢复干净的 Makefile 状态
           git checkout Makefile arch/arm64/Makefile || true
 
-          # 2. 构筑完整的 VDSO 桩文件以防链接缺失
+          # 构筑 VDSO 桩
           mkdir -p arch/arm64/kernel/vdso scripts include/generated
           echo "obj-y :=" > arch/arm64/kernel/vdso/Makefile
           touch arch/arm64/kernel/vdso/vdso.lds
           touch arch/arm64/kernel/vdso/vdso.S
           touch include/generated/vdso-offsets.h
-          printf "all:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-          # 3. 仅对 vdso 目标进行安全占位覆盖，绝不误伤 dtbs 等核心构建目标
+          # 核心修复：在 scripts/Makefile.gcc-plugins 中显式声明 prepare0 索要的 gcc-plugins 目标
+          printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
+
+          # 架构层 vdso_prepare 安全重写
           if [ -f "arch/arm64/Makefile" ]; then
             sed -i '/vdso_prepare:/,/^\s*$/c\vdso_prepare:\n\t@true' arch/arm64/Makefile || true
           fi
 
-      - name: 6. 开始编译内核 (精准护航 dtbs，全速并行冲刺)
+      - name: 6. 开始编译内核 (精准应答 prepare0，全速并行冲刺)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
