@@ -29,32 +29,18 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 4. 完美构筑 VDSO 桩与防重定义头文件
+      - name: 4. 完美构筑 VDSO 桩与正确 Tab 缩进的 Makefile
         run: |
           git checkout Makefile arch/arm64/Makefile arch/arm64/kernel/signal.c || true
 
           mkdir -p arch/arm64/kernel/vdso scripts include/generated
           
-          # 核心修复：编写能够正确生成 builtin.a 的 VDSO Makefile 桩
-          cat << 'VDSOMAKE' > arch/arm64/kernel/vdso/Makefile
-          targets := vdso.lds
-          $(obj)/vdso.lds:
-          .git@touch $@
-
-          quiet_cmd_ar = AR      $@
-                cmd_ar = rm -f $@ && $(AR) cqs $@
-
-          $(obj)/builtin.a:
-          .git$(call cmd_ar)
-
-          obj-y := vdso.o
-          $(obj)/vdso.o:
-          .git@touch $@
-          VDSOMAKE
+          # 核心修复：使用 printf 严格写入带真实 Tab 的 VDSO Makefile
+          printf "targets := vdso.lds\n\$(obj)/vdso.lds:\n\t@touch \$@\n\nquiet_cmd_ar = AR      \$@\n      cmd_ar = rm -f \$@ && \$(AR) cqs \$@\n\n\$(obj)/builtin.a:\n\t\$(call cmd_ar)\n\nobj-y := vdso.o\n\$(obj)/vdso.o:\n\t@touch \$@\n" > arch/arm64/kernel/vdso/Makefile
 
           touch arch/arm64/kernel/vdso/vdso.S
           
-          # 核心修复：带防重定义保护的 vdso-offsets.h
+          # 防重定义保护的 vdso-offsets.h
           cat << 'HEADER' > include/generated/vdso-offsets.h
           #ifndef __VDSO_OFFSETS_H
           #define __VDSO_OFFSETS_H
