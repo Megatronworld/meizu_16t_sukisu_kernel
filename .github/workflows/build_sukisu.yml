@@ -34,7 +34,7 @@ jobs:
           EXTRACTED_DIR=$(find . -maxdepth 1 -type d \( -name "KernelSU-*" -o -name "SukiSU-*" \))
           if [ -d "$EXTRACTED_DIR/kernel" ]; then
             rm -rf kernel/ksu
-            cp -rf "$EXTRACTED_DIR/kernel" kernel/
+            cp -rf "$EXTracted_DIR/kernel" kernel/ || cp -rf "$EXTRACTED_DIR/kernel" kernel/
           else
             cp -rf "$EXTRACTED_DIR"/* ./
           fi
@@ -42,25 +42,21 @@ jobs:
 
       - name: 5. 构筑完备的 VDSO 与 gcc-plugins 桩规则
         run: |
-          # 恢复干净的 Makefile 状态
           git checkout Makefile arch/arm64/Makefile || true
 
-          # 构筑 VDSO 桩
           mkdir -p arch/arm64/kernel/vdso scripts include/generated
           echo "obj-y :=" > arch/arm64/kernel/vdso/Makefile
           touch arch/arm64/kernel/vdso/vdso.lds
           touch arch/arm64/kernel/vdso/vdso.S
           touch include/generated/vdso-offsets.h
 
-          # 核心修复：在 scripts/Makefile.gcc-plugins 中显式声明 prepare0 索要的 gcc-plugins 目标
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-          # 架构层 vdso_prepare 安全重写
           if [ -f "arch/arm64/Makefile" ]; then
             sed -i '/vdso_prepare:/,/^\s*$/c\vdso_prepare:\n\t@true' arch/arm64/Makefile || true
           fi
 
-      - name: 6. 开始编译内核 (精准应答 prepare0，全速并行冲刺)
+      - name: 6. 开始编译内核 (加入 -fcommon 修复主机工具冲突，全速冲刺)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -73,7 +69,6 @@ jobs:
           
           make O=out "$CONFIG_NAME"
           
-          # 安全关闭插件和 VDSO 配置项
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/g' out/.config || true
           sed -i 's/CONFIG_HAVE_GCC_PLUGINS=y/# CONFIG_HAVE_GCC_PLUGINS is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO is not set/g' out/.config || true
@@ -88,7 +83,7 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 启动全速并行编译
+          # 核心修复：在 HOSTCFLAGS 中加入 -fcommon 以解决现代主机编译 dtc 时的多重定义冲突
           make O=out -j$(nproc) \
             CC=clang \
             LD=ld.lld \
@@ -100,7 +95,7 @@ jobs:
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-android- \
             CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-            HOSTCFLAGS="-std=gnu89"
+            HOSTCFLAGS="-std=gnu89 -fcommon"
 
       - name: 7. 打包为 AnyKernel3 刷机包
         run: |
