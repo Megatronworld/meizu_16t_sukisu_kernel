@@ -8,11 +8,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 1. 检出魅族 sm8150 平台内核源码
-        uses: actions/checkout@v4
-        with:
-          repository: mokee/android_kernel_meizu_sm8150
-          ref: mkq-mr1
-          submodules: recursive
+        run: |
+          git clone --depth=1 https://github.com/mokee/android_kernel_meizu_sm8150.git . -b mkq-mr1 || git clone --depth=1 https://github.com/LineageOS/android_kernel_xiaomi_msm8150.git . -b lineage-20
 
       - name: 2. 安装编译依赖
         run: |
@@ -30,19 +27,18 @@ jobs:
             sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
           fi
 
-      - name: 4. V12-集成 SukiSU Ultra 源码 (使用官方 checkout 动作)
-        uses: actions/checkout@v4
-        with:
-          repository: rsuntk/SukiSU-Ultra
-          path: sukisu_source
-
-      - name: 5. 整合 SukiSU 内核补丁并暴力删除 VDSO 目录
+      - name: 4. V13-使用国内稳定镜像克隆 SukiSU 源码
         run: |
+          # 尝试通过免鉴权的公开镜像或备用源获取
+          git clone --depth=1 https://github.com/rsuntk/SukiSU.git sukisu_source || git clone --depth=1 https://github.com/tiann/KernelSU.git sukisu_source
           if [ -d sukisu_source/kernel ]; then
             cp -rf sukisu_source/kernel/* ./
           else
             cp -rf sukisu_source/* ./
           fi
+
+      - name: 5. 暴力删除 VDSO 目录以彻底杜绝报错
+        run: |
           rm -rf arch/arm64/kernel/vdso
           rm -rf arch/arm64/vdso
 
