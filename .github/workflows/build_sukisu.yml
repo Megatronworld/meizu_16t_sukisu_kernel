@@ -45,7 +45,7 @@ jobs:
           rm -rf arch/arm64/kernel/vdso
           rm -rf arch/arm64/vdso
 
-      - name: 6. 开始编译内核 (修复 gcc-plugins 报错)
+      - name: 6. 开始编译内核 (使用 sed 完美绕过配置语法错误)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -58,9 +58,11 @@ jobs:
           
           make O=out "$CONFIG_NAME"
           
-          # 禁用会引发报错的 GCC 插件和独立 KASAN 检查
-          python3 scripts/config --file out/.config --disable CONFIG_GCC_PLUGINS
-          python3 scripts/config --file out/.config --disable CONFIG_KASAN
+          # 直接使用 sed 修改 .config 关闭 gcc 插件和 kasan
+          sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/g' out/.config || true
+          sed -i 's/CONFIG_KASAN=y/# CONFIG_KASAN is not set/g' out/.config || true
+          echo "CONFIG_GCC_PLUGINS=n" >> out/.config
+          
           yes "" | make O=out oldconfig
           
           make O=out -j$(nproc) \
