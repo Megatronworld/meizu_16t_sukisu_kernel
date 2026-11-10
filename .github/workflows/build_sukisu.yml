@@ -37,10 +37,12 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 5. 构筑完备的 VDSO 与 gcc-plugins 安全桩
+      - name: 5. 绝对保持 Makefile 原汁原味，只部署安全桩
         run: |
+          # 核心修复：把 Makefile 和 arch/arm64/Makefile 全部恢复到 100% 官方纯净状态
           git checkout Makefile arch/arm64/Makefile || true
 
+          # 构筑 VDSO 桩与 gcc-plugins 桩
           mkdir -p arch/arm64/kernel/vdso scripts include/generated
           echo "obj-y :=" > arch/arm64/kernel/vdso/Makefile
           touch arch/arm64/kernel/vdso/vdso.lds
@@ -49,19 +51,13 @@ jobs:
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-          if [ -f "arch/arm64/Makefile" ]; then
-            sed -i '/--fix-cortex-a53-843419/s/^/#/' arch/arm64/Makefile || true
-            sed -i '/vdso_prepare:/,/^\s*$/c\vdso_prepare:\n\t@true' arch/arm64/Makefile || true
-          fi
-
-      - name: 6. 开始编译内核 (高通 sm8150 标准闭环参数)
+      - name: 6. 开始编译内核 (纯净源码环境，全速冲刺)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
           export PATH="$(pwd)/toolchain/bin:$PATH"
           mkdir -p out
           
-          # 自动寻找针对 meizu 或通用 sm8150 的 defconfig
           CONFIG_FILE=$(find arch/arm64/configs -name "*meizu*" -o -name "*sm8150*" -o -name "*defconfig" | head -n 1)
           CONFIG_NAME=$(basename "$CONFIG_FILE")
           echo "Using config: $CONFIG_NAME"
@@ -82,7 +78,7 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 核心修复：带上高通 sm8150 完整的交叉编译与平台环境变量进行并行构建
+          # 并行构建内核主体
           make O=out -j$(nproc) \
             CC=clang \
             HOSTCC=gcc \
