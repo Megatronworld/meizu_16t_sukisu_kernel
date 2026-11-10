@@ -45,25 +45,25 @@ jobs:
           rm -rf arch/arm64/kernel/vdso
           rm -rf arch/arm64/vdso
 
-      - name: 6. 开始编译内核 (使用 sed 完美绕过配置语法错误)
+      - name: 6. 开始编译内核 (直接从源码根源移除 gcc-plugins 检查)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
           export PATH="$(pwd)/toolchain/bin:$PATH"
           mkdir -p out
           
+          # 从根源上将 Makefile 中的 gcc-plugins 检查直接置空或删掉
+          if [ -f "scripts/Makefile.gcc-plugins" ]; then
+            echo "obj- := ." > scripts/Makefile.gcc-plugins
+          fi
+          sed -i '/gcc-plugins/d' Makefile || true
+          sed -i '/CONFIG_GCC_PLUGINS/d' arch/arm64/configs/*defconfig || true
+
           CONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
           CONFIG_NAME=$(basename "$CONFIG_FILE")
           echo "Using config: $CONFIG_NAME"
           
           make O=out "$CONFIG_NAME"
-          
-          # 直接使用 sed 修改 .config 关闭 gcc 插件和 kasan
-          sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/g' out/.config || true
-          sed -i 's/CONFIG_KASAN=y/# CONFIG_KASAN is not set/g' out/.config || true
-          echo "CONFIG_GCC_PLUGINS=n" >> out/.config
-          
-          yes "" | make O=out oldconfig
           
           make O=out -j$(nproc) \
             CC=clang \
