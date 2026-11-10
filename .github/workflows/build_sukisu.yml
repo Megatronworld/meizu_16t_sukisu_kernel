@@ -37,25 +37,30 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 5. 构筑 VDSO 桩、gcc-plugins 桩并修补 arch/arm64/Makefile
+      - name: 5. 深度净化 Makefile 并构筑完备桩规则
         run: |
-          git checkout Makefile arch/arm64/Makefile || true
-
+          # 构筑 VDSO 桩与头文件
           mkdir -p arch/arm64/kernel/vdso scripts include/generated
           echo "obj-y :=" > arch/arm64/kernel/vdso/Makefile
           touch arch/arm64/kernel/vdso/vdso.lds
           touch arch/arm64/kernel/vdso/vdso.S
           touch include/generated/vdso-offsets.h
 
+          # 完备定义 gcc-plugins 目标
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-          # 核心修复：注释掉 arch/arm64/Makefile 中不兼容的 Cortex-A53 链接修复选项
+          # 核心修复：清理顶层 Makefile 中所有残留的报错依赖
+          if [ -f "Makefile" ]; then
+            sed -i '/gcc-plugins/d' Makefile || true
+            sed -i '/vdso/d' Makefile || true
+          fi
+
           if [ -f "arch/arm64/Makefile" ]; then
             sed -i '/--fix-cortex-a53-843419/s/^/#/' arch/arm64/Makefile || true
             sed -i '/vdso_prepare:/,/^\s*$/c\vdso_prepare:\n\t@true' arch/arm64/Makefile || true
           fi
 
-      - name: 6. 开始编译内核 (全功能对齐交叉工具链)
+      - name: 6. 开始编译内核 (确保 dtc 与并行编译顺畅打通)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -82,7 +87,10 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 核心修复：将 CROSS_COMPILE 统一指向安装好的 aarch64-linux-gnu-
+          # 先单独安全构建 dtc 主机工具，再启动整体并行编译
+          make O=out -j$(nproc) scripts/dtc HOSTCC=gcc HOSTCXX=g++ HOSTCFLAGS="-std=gnu89 -fcommon" || true
+          
+          # 全速编译内核主体
           make O=out -j$(nproc) \
             CC=clang \
             HOSTCC=gcc \
