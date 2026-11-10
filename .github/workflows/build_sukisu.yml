@@ -40,21 +40,24 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 5. 开始编译内核 (精准剥离顶层 Makefile 的 vdso 依赖)
+      - name: 5. 主动创建空的 vdso 结构文件以满足编译系统寻找
+        run: |
+          mkdir -p arch/arm64/kernel/vdso
+          echo "obj-y :=" > arch/arm64/kernel/vdso/Makefile
+          touch arch/arm64/kernel/vdso/vdso.lds
+          touch arch/arm64/kernel/vdso/vdso.S
+          
+          if [ -f "Makefile" ]; then
+            sed -i '/gcc-plugins/d' Makefile || true
+          fi
+
+      - name: 6. 开始编译内核 (全速冲刺)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
           export PATH="$(pwd)/toolchain/bin:$PATH"
           mkdir -p out
           
-          # 核心修复：直接将顶层 Makefile 中所有依赖 vdso 的目标替换为空
-          if [ -f "Makefile" ]; then
-            sed -i 's/\bvdso\b//g' Makefile || true
-            sed -i '/gcc-plugins/d' Makefile || true
-          fi
-          
-          rm -rf arch/arm64/kernel/vdso arch/arm64/vdso || true
-
           CONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
           CONFIG_NAME=$(basename "$CONFIG_FILE")
           echo "Using config: $CONFIG_NAME"
