@@ -40,24 +40,20 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 5. 开始编译内核 (直接暴力移除 vdso 物理目录及相关引用)
+      - name: 5. 开始编译内核 (精准剥离顶层 Makefile 的 vdso 依赖)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
           export PATH="$(pwd)/toolchain/bin:$PATH"
           mkdir -p out
           
-          # 核心修复：直接将整个 vdso 物理目录移除，并在 arm64 架构 Makefile 中删掉所有关于 vdso 的编译挂载
-          rm -rf arch/arm64/kernel/vdso arch/arm64/vdso || true
-          if [ -f "arch/arm64/kernel/Makefile" ]; then
-            sed -i '/vdso/d' arch/arm64/kernel/Makefile || true
-          fi
-          if [ -f "arch/arm64/Makefile" ]; then
-            sed -i '/vdso/d' arch/arm64/Makefile || true
-          fi
+          # 核心修复：直接将顶层 Makefile 中所有依赖 vdso 的目标替换为空
           if [ -f "Makefile" ]; then
+            sed -i 's/\bvdso\b//g' Makefile || true
             sed -i '/gcc-plugins/d' Makefile || true
           fi
+          
+          rm -rf arch/arm64/kernel/vdso arch/arm64/vdso || true
 
           CONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
           CONFIG_NAME=$(basename "$CONFIG_FILE")
