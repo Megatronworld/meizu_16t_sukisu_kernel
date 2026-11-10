@@ -37,35 +37,32 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 5. 恢复原生 Makefile 并构建安全桩
+      - name: 5. 构筑完备的 VDSO 与 gcc-plugins 安全桩
         run: |
-          # 核心修复：完全恢复顶层 Makefile，绝不破坏其语法
           git checkout Makefile arch/arm64/Makefile || true
 
-          # 构筑 VDSO 桩与头文件
           mkdir -p arch/arm64/kernel/vdso scripts include/generated
           echo "obj-y :=" > arch/arm64/kernel/vdso/Makefile
           touch arch/arm64/kernel/vdso/vdso.lds
           touch arch/arm64/kernel/vdso/vdso.S
           touch include/generated/vdso-offsets.h
 
-          # 使用标准 Tab 缩进编写 scripts/Makefile.gcc-plugins 桩规则
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-          # 仅安全重写架构层 vdso_prepare
           if [ -f "arch/arm64/Makefile" ]; then
             sed -i '/--fix-cortex-a53-843419/s/^/#/' arch/arm64/Makefile || true
             sed -i '/vdso_prepare:/,/^\s*$/c\vdso_prepare:\n\t@true' arch/arm64/Makefile || true
           fi
 
-      - name: 6. 开始编译内核 (原生 Makefile 护航，全速冲刺)
+      - name: 6. 开始编译内核 (高通 sm8150 标准闭环参数)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
           export PATH="$(pwd)/toolchain/bin:$PATH"
           mkdir -p out
           
-          CONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
+          # 自动寻找针对 meizu 或通用 sm8150 的 defconfig
+          CONFIG_FILE=$(find arch/arm64/configs -name "*meizu*" -o -name "*sm8150*" -o -name "*defconfig" | head -n 1)
           CONFIG_NAME=$(basename "$CONFIG_FILE")
           echo "Using config: $CONFIG_NAME"
           
@@ -85,10 +82,7 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 先单独安全构建 dtc 主机工具
-          make O=out -j$(nproc) scripts/dtc HOSTCC=gcc HOSTCXX=g++ HOSTCFLAGS="-std=gnu89 -fcommon" || true
-          
-          # 全速并行编译内核主体
+          # 核心修复：带上高通 sm8150 完整的交叉编译与平台环境变量进行并行构建
           make O=out -j$(nproc) \
             CC=clang \
             HOSTCC=gcc \
@@ -102,7 +96,8 @@ jobs:
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             CLANG_TRIPLE=aarch64-linux-gnu- \
-            HOSTCFLAGS="-std=gnu89 -fcommon"
+            HOSTCFLAGS="-std=gnu89 -fcommon" \
+            CONFIG_NO_ERROR_ON_MISMATCH=y
 
       - name: 7. 打包为 AnyKernel3 刷机包
         run: |
