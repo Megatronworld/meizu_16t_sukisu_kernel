@@ -40,17 +40,20 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 5. 绝对标准的 Makefile 占位修复
+      - name: 5. 暴力剥离顶层 Makefile 中的 gcc-plugins 依赖
         run: |
           mkdir -p arch/arm64/kernel/vdso scripts
           echo "obj-y :=" > arch/arm64/kernel/vdso/Makefile
           touch arch/arm64/kernel/vdso/vdso.lds
           touch arch/arm64/kernel/vdso/vdso.S
-          
-          # 核心修复：用绝对合法的空 Makefile 覆盖，不带任何错乱缩进
           printf "all:\n\t@true\n" > scripts/Makefile.gcc-plugins
+          
+          # 核心修复：直接将顶层 Makefile 中所有提到 gcc-plugins 的行整行删除，彻底断开依赖
+          if [ -f "Makefile" ]; then
+            sed -i '/gcc-plugins/d' Makefile || true
+          fi
 
-      - name: 6. 开始编译内核 (全速并行编译)
+      - name: 6. 开始编译内核 (全速冲刺并行编译)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
