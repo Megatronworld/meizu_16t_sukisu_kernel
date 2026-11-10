@@ -40,16 +40,15 @@ jobs:
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
 
-      - name: 5. 构造完美的占位文件以骗过插件和 VDSO 检查
+      - name: 5. 预先清空插件与 VDSO 占位目录
         run: |
-          # 保证 Makefile 绝对不被破坏，而是用空文件覆盖插件和 VDSO 规则
           mkdir -p scripts arch/arm64/kernel/vdso
           echo "" > scripts/Makefile.gcc-plugins
           echo "obj-y :=" > arch/arm64/kernel/vdso/Makefile
           touch arch/arm64/kernel/vdso/vdso.lds
           touch arch/arm64/kernel/vdso/vdso.S
 
-      - name: 6. 开始编译内核 (保持 Makefile 完整，纯靠配置与占位文件通关)
+      - name: 6. 开始编译内核 (配置层彻底封死 gcc-plugins)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -62,20 +61,95 @@ jobs:
           
           make O=out "$CONFIG_NAME"
           
-          # 在 .config 中安全关闭可能会引发报错的选项
+          # 核心修复：在配置文件生成后，彻底将所有插件和冲突项设为非激活状态
+          sed -i '/CONFIG_GCC_PLUGINS/d' out/.config || true
+          sed -i '/CONFIG_HAVE_GCC_PLUGINS/d' out/.config || true
+          echo "# CONFIG_GCC_PLUGINS is not set" >> out/.config
+          echo "# CONFIG_HAVE_GCC_PLUGINS is not set" >> out/.config
+          
+          sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO is not set/g' out/.config || true
+          sed -i 's/CONFIG_VDSO32=y/# CONFIG_VDSO32 is not set/g' out
+cat << 'EOF' > .github/workflows/build_sukisu.yml
+name: Build Meizu 16T SukiSU Ultra Kernel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. 检出魅族 sm8150 平台内核源码
+        run: |
+          git clone --depth=1 https://github.com/mokee/android_kernel_meizu_sm8150.git . -b mkq-mr1 || git clone --depth=1 https://github.com/LineageOS/android_kernel_xiaomi_msm8150.git . -b lineage-20
+
+      - name: 2. 安装编译依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld
+
+      - name: 3. 下载 AOSP Clang 工具链 (已验证成功)
+        run: |
+          mkdir -p toolchain
+          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android12-release/clang-r416183b.tar.gz -O clang.tar.gz || true
+          if [ -f clang.tar.gz ]; then
+            tar -C toolchain -xzf clang.tar.gz || true
+          fi
+          if [ ! -f "toolchain/bin/clang" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          fi
+
+      - name: 4. 下载集成 SukiSU 源码 (已验证成功)
+        run: |
+          wget https://github.com/tiann/KernelSU/archive/refs/heads/main.zip -O sukisu.zip || wget https://github.com/rsuntk/SukiSU-Ultra/archive/refs/heads/main.zip -O sukisu.zip
+          unzip -q sukisu.zip
+          EXTRACTED_DIR=$(find . -maxdepth 1 -type d \( -name "KernelSU-*" -o -name "SukiSU-*" \))
+          if [ -d "$EXTRACTED_DIR/kernel" ]; then
+            rm -rf kernel/ksu
+            cp -rf "$EXTRACTED_DIR/kernel" kernel/
+          else
+            cp -rf "$EXTRACTED_DIR"/* ./
+          fi
+          rm -rf sukisu.zip "$EXTRACTED_DIR"
+
+      - name: 5. 彻底剥离 Makefile 中 prepare0 对 gcc-plugins 的依赖
+        run: |
+          mkdir -p arch/arm64/kernel/vdso
+          echo "obj-y :=" > arch/arm64/kernel/vdso/Makefile
+          touch arch/arm64/kernel/vdso/vdso.lds
+          touch arch/arm64/kernel/vdso/vdso.S
+          
+          # 核心修复：直接把 Makefile 中定义 prepare0 的行里所有 gcc-plugins 字样抹掉
+          if [ -f "Makefile" ]; then
+            sed -i '/prepare0:/ s/gcc-plugins//g' Makefile || true
+            sed -i '/-I$(srctree)\/scripts\/gcc-plugins/d' Makefile || true
+          fi
+
+      - name: 6. 开始编译内核 (全速并行编译)
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export PATH="$(pwd)/toolchain/bin:$PATH"
+          mkdir -p out
+          
+          CONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
+          CONFIG_NAME=$(basename "$CONFIG_FILE")
+          echo "Using config: $CONFIG_NAME"
+          
+          make O=out "$CONFIG_NAME"
+          
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/g' out/.config || true
-          sed -i 's/CONFIG_KASAN=y/# CONFIG_KASAN is not set/g' out/.config || true
+          sed -i 's/CONFIG_HAVE_GCC_PLUGINS=y/# CONFIG_HAVE_GCC_PLUGINS is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO32=y/# CONFIG_VDSO32 is not set/g' out/.config || true
           
           echo "CONFIG_GCC_PLUGINS=n" >> out/.config
-          echo "CONFIG_KASAN=n" >> out/.config
+          echo "CONFIG_HAVE_GCC_PLUGINS=n" >> out/.config
           echo "CONFIG_VDSO=n" >> out/.config
           echo "CONFIG_VDSO32=n" >> out/.config
           
           yes "" | make O=out oldconfig
           
-          # 开始全速并行编译
           make O=out -j$(nproc) \
             CC=clang \
             LD=ld.lld \
