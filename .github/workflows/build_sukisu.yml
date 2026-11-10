@@ -56,7 +56,7 @@ jobs:
             sed -i '/vdso_prepare:/,/^\s*$/c\vdso_prepare:\n\t@true' arch/arm64/Makefile || true
           fi
 
-      - name: 6. 开始编译内核 (单次规范并行编译)
+      - name: 6. 开始编译内核 (分阶段强力隔离 scripts 编译)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -71,6 +71,7 @@ jobs:
           
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/g' out/.config || true
           sed -i 's/CONFIG_HAVE_GCC_PLUGINS=y/# CONFIG_HAVE_GCC_PLUGINS is not set/g' out/.config || true
+          sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO=y/g' out/.config || true # 占位
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO32=y/# CONFIG_VDSO32 is not set/g' out/.config || true
           sed -i 's/CONFIG_KASAN=y/# CONFIG_KASAN is not set/g' out/.config || true
@@ -83,7 +84,10 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 核心修复：HOSTCC 使用 gcc 编译主机工具（带 -fcommon），目标内核使用 clang 编译，各司其职
+          # 第一阶段：使用纯 GCC 编译 scripts 目录，强制 CC=gcc 覆盖掉全局的 clang 污染
+          make O=out -j$(nproc) scripts CC=gcc HOSTCC=gcc HOSTCXX=g++ HOSTCFLAGS="-std=gnu89 -fcommon"
+          
+          # 第二阶段：正式切回 Clang 全速并行编译内核主体
           make O=out -j$(nproc) \
             CC=clang \
             HOSTCC=gcc \
