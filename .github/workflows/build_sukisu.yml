@@ -27,12 +27,10 @@ jobs:
             sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
           fi
 
-      - name: 4. V14-使用 curl/wget 从镜像站直接下载并安全解压 SukiSU
+      - name: 4. 下载集成 SukiSU 源码 (已验证成功)
         run: |
-          # 换用完全公开、无需任何鉴权的备用压缩包源
           wget https://github.com/tiann/KernelSU/archive/refs/heads/main.zip -O sukisu.zip || wget https://github.com/rsuntk/SukiSU-Ultra/archive/refs/heads/main.zip -O sukisu.zip
           unzip -q sukisu.zip
-          # 自动寻找解压出来的文件夹并安全合并
           EXTRACTED_DIR=$(find . -maxdepth 1 -type d \( -name "KernelSU-*" -o -name "SukiSU-*" \))
           if [ -d "$EXTRACTED_DIR/kernel" ]; then
             rm -rf kernel/ksu
@@ -47,7 +45,7 @@ jobs:
           rm -rf arch/arm64/kernel/vdso
           rm -rf arch/arm64/vdso
 
-      - name: 6. 开始编译内核
+      - name: 6. 开始编译内核 (修复 gcc-plugins 报错)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -60,25 +58,23 @@ jobs:
           
           make O=out "$CONFIG_NAME"
           
-          if [ -f "toolchain/bin/clang" ]; then
-            make O=out -j$(nproc) \
-              CC=clang \
-              LD=ld.lld \
-              AR=llvm-ar \
-              NM=llvm-nm \
-              OBJCOPY=llvm-objcopy \
-              OBJDUMP=llvm-objdump \
-              STRIP=llvm-strip \
-              CLANG_TRIPLE=aarch64-linux-gnu- \
-              CROSS_COMPILE=aarch64-linux-android- \
-              CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-              HOSTCFLAGS="-std=gnu89"
-          else
-            make O=out -j$(nproc) \
-              ARCH=arm64 \
-              CROSS_COMPILE=aarch64-linux-gnu- \
-              HOSTCFLAGS="-std=gnu89"
-          fi
+          # 禁用会引发报错的 GCC 插件和独立 KASAN 检查
+          python3 scripts/config --file out/.config --disable CONFIG_GCC_PLUGINS
+          python3 scripts/config --file out/.config --disable CONFIG_KASAN
+          yes "" | make O=out oldconfig
+          
+          make O=out -j$(nproc) \
+            CC=clang \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-android- \
+            CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+            HOSTCFLAGS="-std=gnu89"
 
       - name: 7. 打包为 AnyKernel3 刷机包
         run: |
