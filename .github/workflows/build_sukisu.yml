@@ -49,7 +49,7 @@ jobs:
           # 完备定义 gcc-plugins 目标
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-          # 核心修复：清理顶层 Makefile 中所有残留的报错依赖
+          # 清理顶层 Makefile 中所有残留的报错依赖
           if [ -f "Makefile" ]; then
             sed -i '/gcc-plugins/d' Makefile || true
             sed -i '/vdso/d' Makefile || true
@@ -60,7 +60,7 @@ jobs:
             sed -i '/vdso_prepare:/,/^\s*$/c\vdso_prepare:\n\t@true' arch/arm64/Makefile || true
           fi
 
-      - name: 6. 开始编译内核 (确保 dtc 与并行编译顺畅打通)
+      - name: 6. 开始编译内核 (修正 scripts 目标并行冲刺)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -87,8 +87,8 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 先单独安全构建 dtc 主机工具，再启动整体并行编译
-          make O=out -j$(nproc) scripts/dtc HOSTCC=gcc HOSTCXX=g++ HOSTCFLAGS="-std=gnu89 -fcommon" || true
+          # 核心修复：将单独编译 dtc 改为编译通用的 scripts 目标
+          make O=out -j$(nproc) scripts HOSTCC=gcc HOSTCXX=g++ HOSTCFLAGS="-std=gnu89 -fcommon" || true
           
           # 全速编译内核主体
           make O=out -j$(nproc) \
