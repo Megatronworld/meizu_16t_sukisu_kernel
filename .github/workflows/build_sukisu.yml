@@ -39,7 +39,7 @@ jobs:
           
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
-      - name: 4. 前置基础修补：注入 sukiSU_ks 空宏定义、调度宏、红外中断宏与外设屏蔽
+      - name: 4. 前置基础修补：调度宏、红外中断宏与外设屏蔽
         run: |
           if [ -f "kernel/sched/core.c" ]; then
             sed -i '/NOHZ_BALANCE_KICK/s/^/\/* /; /NOHZ_BALANCE_KICK/s/$/ *\//' kernel/sched/core.c || true
@@ -47,8 +47,7 @@ jobs:
           fi
           
           if [ -f "kernel/sched/fair.c" ]; then
-            # 核心绝招：在 fair.c 顶部落户宏定义，直接将高版本 sukiSU_ks 和 rax_allowed 空化，让旧内核免疫报错
-            sed -i '1i #define sukiSU_ks(x) do {} while(0)\n#define rax_allowed 0\n#ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif' kernel/sched/fair.c || true
+            sed -i '1i #ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif' kernel/sched/fair.c || true
             sed -i '/UCLAMP_MAX/s/^/\/* /; /UCLAMP_MAX/s/$/ *\//' kernel/sched/fair.c || true
             sed -i '/sched_load_balance_skip_tasks/s/^/\/* /; /sched_load_balance_skip_tasks/s/$/ *\//' kernel/sched/fair.c || true
           fi
@@ -82,7 +81,7 @@ jobs:
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 6. 开始编译内核 (全速冲刺终点)
+      - name: 6. 开始编译内核 (编译前夕用 Python 绝对物理切除 fair.c 中的 sukiSU_ks 行)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -108,6 +107,25 @@ jobs:
           echo "CONFIG_KASAN=n" >> out/.config
           
           yes "" | make O=out oldconfig
+          
+          # 核心绝招：在编译前一秒，用 Python 逐行扫描 fair.c，只要发现包含 sukiSU_ks 或 rax_allowed 的行，直接用空语句替代
+          python3 -c "
+          path = 'kernel/sched/fair.c'
+          if os.path.exists(path):
+              with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                  lines = f.readlines()
+              new_lines = []
+              count = 0
+              for line in lines:
+                  if 'sukiSU_ks' in line or 'rax_allowed' in line:
+                      new_lines.append('/* Removed SukiSU hook by V101 */;\n')
+                      count += 1
+                  else:
+                      new_lines.append(line)
+              with open(path, 'w', encoding='utf-8') as f:
+                  f.writelines(new_lines)
+              print(f'Successfully purged {count} SukiSU lines from fair.c')
+          " || true
           
           make O=out -j$(nproc) \
             CC=aarch64-linux-gnu-gcc \
