@@ -31,14 +31,16 @@ jobs:
           
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
-      - name: 4. 核心手术：安全剥离不兼容的高版本调度与外设驱动钩子
+      - name: 4. 核心手术：补齐宏定义、剥离高版本调度钩子、彻底禁用 psmouse
         run: |
           if [ -f "kernel/sched/core.c" ]; then
             sed -i '/NOHZ_BALANCE_KICK/s/^/\/* /; /NOHZ_BALANCE_KICK/s/$/ *\//' kernel/sched/core.c || true
             sed -i '/nonz_flags/s/^/\/* /; /nonz_flags/s/$/ *\//' kernel/sched/core.c || true
           fi
           
+          # 核心修复：在 fair.c 头部安全注入 FULL_THROTTLE_BOOST 宏定义桩，并注释冲突钩子
           if [ -f "kernel/sched/fair.c" ]; then
+            sed -i '1i #ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif' kernel/sched/fair.c || true
             sed -i '/UCLAMP_MAX/s/^/\/* /; /UCLAMP_MAX/s/$/ *\//' kernel/sched/fair.c || true
             sed -i '/sched_load_balance_skip_tasks/s/^/\/* /; /sched_load_balance_skip_tasks/s/$/ *\//' kernel/sched/fair.c || true
           fi
@@ -47,7 +49,11 @@ jobs:
             sed -i '1i #ifndef IRQ_TYPE_LEVEL_HIGH\n#define IRQ_TYPE_LEVEL_HIGH 0x00000004\n#endif\n#ifndef IRQ_TYPE_EDGE_RISING\n#define IRQ_TYPE_EDGE_RISING 0x00000001\n#endif' drivers/media/rc/msm-geni-ir.c || true
           fi
           
+          # 终极净化：直接关掉 psmouse 驱动编译选项，彻底避免找不到头文件
           rm -f drivers/input/touchscreen/cypress* drivers/input/mouse/synaptics* 2>/dev/null || true
+          if [ -f "drivers/input/mouse/Makefile" ]; then
+            sed -i '/psmouse/d' drivers/input/mouse/Makefile || true
+          fi
 
       - name: 5. 部署 VDSO 桩与防重定义宏
         run: |
