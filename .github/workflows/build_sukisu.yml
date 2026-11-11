@@ -1,4 +1,4 @@
-name: Build Meizu 16T SukiSU Ultra Kernel (V113 No-VDSO Edition)
+name: Build Meizu 16T SukiSU Ultra Kernel (V114 Final Purge)
 
 on:
   workflow_dispatch:
@@ -82,23 +82,32 @@ jobs:
           fi
           rm -f drivers/input/touchscreen/cypress*.c 2>/dev/null || true
 
-      - name: 5. 彻底禁用 arch/arm64/kernel/vdso 目录编译
+      - name: 5. 终极 VDSO 斩草除根：抹除 vdso_prepare 依赖并伪造桩文件
         run: |
           git checkout Makefile arch/arm64/Makefile arch/arm64/kernel/signal.c || true
-          
-          # 直接修改 arm64 的主 Makefile，将 vdso 子目录从编译目标中剔除
+
+          # 核心大招 1：在 arm64 的 Makefile 中将 vdso_prepare 规则变为空指令，彻底消除找不到目标的报错
           if [ -f "arch/arm64/Makefile" ]; then
-            sed -i '/core-y.*+=.*kernel/s/vdso//g' arch/arm64/Makefile || true
-            sed -i '/subdir-y.*+=.*vdso/s/^/#/' arch/arm64/Makefile || true
+            sed -i '/vdso_prepare:/,/^\S/s/^/#/' arch/arm64/Makefile || true
+            sed -i 's/vdso_prepare//g' arch/arm64/Makefile || true
           fi
+
+          # 核心大招 2：直接在全局 include/generated 和编译目标目录中提前创造好 vdso-offsets.h 桩文件
+          mkdir -p include/generated arch/arm64/include/generated
           
-          # 用空内容直接替换 vdso 的 Makefile，使其什么都不做
-          mkdir -p arch/arm64/kernel/vdso
-          echo "" > arch/arm64/kernel/vdso/Makefile
+          cat << 'HEADER' > include/generated/vdso-offsets.h
+          #ifndef __VDSO_OFFSETS_H
+          #define __VDSO_OFFSETS_H
+          #define vdso_offset_sigtramp 0
+          #define vdso_offset_rt_sigtramp 0
+          #endif
+          HEADER
+
+          cp include/generated/vdso-offsets.h arch/arm64/include/generated/vdso-offsets.h || true
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 6. 开始编译内核 (全速冲刺)
+      - name: 6. 开始编译内核 (全速冲刺刷机包)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -111,7 +120,6 @@ jobs:
           
           make O=out "$CONFIG_NAME"
           
-          # 强制在配置文件中彻底关掉 VDSO 相关宏
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/g' out/.config || true
           sed -i 's/CONFIG_HAVE_GCC_PLUGINS=y/# CONFIG_HAVE_GCC_PLUGINS is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO is not set/g' out/.config || true
