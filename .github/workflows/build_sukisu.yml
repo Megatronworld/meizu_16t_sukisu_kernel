@@ -1,4 +1,4 @@
-name: Build Meizu 16T SukiSU Ultra Kernel (V117 Ultimate All-In-One)
+name: Build Meizu 16T SukiSU Ultra Kernel (V118 Final)
 
 on:
   workflow_dispatch:
@@ -7,22 +7,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: 1. 严格检出魅族 16T sm8150 平台内核源码 (禁止回退)
+      - name: 1. 严格检出魅族 16T sm8150 平台内核源码
         run: |
-          git clone --depth=1 https://github.com/mokee/android_kernel_meizu_sm8150.git . -b mkq-mr1 || {
-            echo "Error: Failed to clone Meizu 16T kernel source!"
-            exit 1
-          }
+          git clone --depth=1 https://github.com/mokee/android_kernel_meizu_sm8150.git . -b mkq-mr1
 
-      - name: 2. 安装完备的 GCC 交叉编译与构建依赖 (含重试)
+      - name: 2. 安装完备的交叉编译依赖
         run: |
-          sudo apt-get clean
-          for i in {1..3}; do
-            sudo apt-get update && break || sleep 5
-          done
-          for i in {1..3}; do
-            sudo apt-get install -y --fix-missing build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu && break || sleep 5
-          done
+          sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
       - name: 3. 下载集成 SukiSU 源码并清理 #error
         run: |
@@ -36,143 +27,74 @@ jobs:
             cp -rf "$EXTRACTED_DIR"/* ./
           fi
           rm -rf sukisu.zip "$EXTRACTED_DIR"
-          
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
-
           find . -type f \( -name "Kconfig*" -o -name "*.mk" -o -name "Makefile" \) 2>/dev/null | xargs sed -i 's/CONFIG_SKS_SCHED=y/# CONFIG_SKS_SCHED is not set/g' || true
           find . -type f \( -name "Kconfig*" -o -name "*.mk" -o -name "Makefile" \) 2>/dev/null | xargs sed -i 's/CONFIG_KSU_SUSFS_SCHED=y/# CONFIG_KSU_SUSFS_SCHED is not set/g' || true
 
-      - name: 4. 终极兼容层：使用宏映射完美规避重定义与未定义冲突
+      - name: 4. 注入弱符号兼容层与 VDSO 桩
         run: |
           mkdir -p include/linux/backport
           cat << 'BACKPORT' > include/linux/backport/sukisu_compat.h
           #ifndef __SUKISU_COMPAT_H
           #define __SUKISU_COMPAT_H
-
           #ifndef CONFIG_UCLAMP_BUCKETS_COUNT
           #define CONFIG_UCLAMP_BUCKETS_COUNT 5
           #endif
-
-          struct uclamp_se {
-              unsigned int value;
-              unsigned int bucket;
-          };
-
+          struct uclamp_se { unsigned int value; unsigned int bucket; };
           #ifndef FULL_THROTTLE_BOOST
           #define FULL_THROTTLE_BOOST 0
           #endif
-
           #ifndef sukiSU_ks
           #define sukiSU_ks(x) (0)
           #endif
-
-          // 核心绝招：改用宏定义安全接管调度钩子，彻底避免与 core.c 的实体函数重定义冲突
-          #undef sched_isolate_cpu
-          #define sched_isolate_cpu(cpu) (0)
-
-          #undef sched_unisolate_cpu_unlocked
-          #define sched_unisolate_cpu_unlocked(cpu) (0)
-
-          #undef trace_sched_load_balance_skip_tasks
-          #define trace_sched_load_balance_skip_tasks() do { } while (0)
-
+          #ifndef __ASSEMBLY__
+          int __attribute__((weak)) sched_isolate_cpu(int cpu) { return 0; }
+          int __attribute__((weak)) sched_unisolate_cpu_unlocked(int cpu) { return 0; }
+          void __attribute__((weak)) trace_sched_load_balance_skip_tasks(void) {}
+          #endif
           #endif
           BACKPORT
-
           if [ -f "include/linux/sched.h" ]; then
             sed -i '1i #include <linux/backport/sukisu_compat.h>' include/linux/sched.h || true
           fi
-          
-          if [ -f "drivers/media/rc/msm-geni-ir.c" ]; then
-            sed -i '1i #ifndef IRQ_TYPE_LEVEL_HIGH\n#define IRQ_TYPE_LEVEL_HIGH 0x00000004\n#endif\n#ifndef IRQ_TYPE_EDGE_RISING\n#define IRQ_TYPE_EDGE_RISING 0x00000001\n#endif' drivers/media/rc/msm-geni-ir.c || true
-          fi
-          
-          if [ -f "drivers/input/Makefile" ]; then
-            sed -i '/mouse/s/^/#/' drivers/input/Makefile || true
-          fi
-          rm -f drivers/input/touchscreen/cypress*.c 2>/dev/null || true
-
-      - name: 5. 安全处理 VDSO 桩
-        run: |
           git checkout Makefile arch/arm64/Makefile arch/arm64/kernel/signal.c || true
-
           python3 -c "
           import os
           path = 'arch/arm64/Makefile'
           if os.path.exists(path):
               with open(path, 'r', encoding='utf-8') as f:
                   lines = f.readlines()
-              new_lines = []
-              for line in lines:
-                  if 'vdso_prepare' in line:
-                      new_lines.append('# ' + line)
-                  else:
-                      new_lines.append(line)
+              new_lines = [('# ' + line) if 'vdso_prepare' in line else line for line in lines]
               with open(path, 'w', encoding='utf-8') as f:
                   f.writelines(new_lines)
           " || true
-
           mkdir -p include/generated arch/arm64/include/generated
-          
-          cat << 'HEADER' > include/generated/vdso-offsets.h
-          #ifndef __VDSO_OFFSETS_H
-          #define __VDSO_OFFSETS_H
-          #define vdso_offset_sigtramp 0
-          #define vdso_offset_rt_sigtramp 0
-          #endif
-          HEADER
-
+          printf "#ifndef __VDSO_OFFSETS_H\n#define __VDSO_OFFSETS_H\n#define vdso_offset_sigtramp 0\n#define vdso_offset_rt_sigtramp 0\n#endif\n" > include/generated/vdso-offsets.h
           cp include/generated/vdso-offsets.h arch/arm64/include/generated/vdso-offsets.h || true
-
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 6. 全速编译内核并打包刷机包
+      - name: 5. 编译内核并打包刷机包
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
           mkdir -p out
-          
-          CONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
-          CONFIG_NAME=$(basename "$CONFIG_FILE")
-          echo "Using config: $CONFIG_NAME"
-          
-          make O=out "$CONFIG_NAME"
-          
+          CONFIG_FILE=\$(find arch/arm64/configs -name "*defconfig" | head -n 1)
+          make O=out \$(basename "\$CONFIG_FILE")
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/g' out/.config || true
-          sed -i 's/CONFIG_HAVE_GCC_PLUGINS=y/# CONFIG_HAVE_GCC_PLUGINS is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO is not set/g' out/.config || true
-          sed -i 's/CONFIG_VDSO32=y/# CONFIG_VDSO32 is not set/g' out/.config || true
-          sed -i 's/CONFIG_KASAN=y/# CONFIG_KASAN is not set/g' out/.config || true
-          
           echo "CONFIG_GCC_PLUGINS=n" >> out/.config
-          echo "CONFIG_HAVE_GCC_PLUGINS=n" >> out/.config
           echo "CONFIG_VDSO=n" >> out/.config
-          echo "CONFIG_VDSO32=n" >> out/.config
-          echo "CONFIG_KASAN=n" >> out/.config
-          
           yes "" | make O=out oldconfig
-          
-          make O=out -j$(nproc) \
-            CC=aarch64-linux-gnu-gcc \
-            HOSTCC=gcc \
-            HOSTCXX=g++ \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            KCFLAGS="-w -Wno-error" \
-            HOSTCFLAGS="-std=gnu89 -fcommon" \
-            CONFIG_NO_ERROR_ON_MISMATCH=y
+          make O=out -j\$(nproc) CC=aarch64-linux-gnu-gcc HOSTCC=gcc CROSS_COMPILE=aarch64-linux-gnu- KCFLAGS="-w -Wno-error" CONFIG_NO_ERROR_ON_MISMATCH=y
 
-      - name: 7. 打包为 AnyKernel3 刷机包
+      - name: 6. 生成 AnyKernel3 刷机包并上传
         run: |
           git clone --depth=1 https://github.com/kernel-sakers/AnyKernel3.git anykernel
           rm -rf anykernel/.git
-          IMG_PATH=$(find out/ -name "Image.gz-dtb" -o -name "Image" | head -n 1)
-          cp "$IMG_PATH" anykernel/Image.gz-dtb
-          cd anykernel
-          zip -r ../Meizu-16T-SukiSU-Ultra-Kernel.zip *
+          cp \$(find out/ -name "Image.gz-dtb" -o -name "Image" | head -n 1) anykernel/Image.gz-dtb
+          cd anykernel && zip -r ../Meizu-16T-SukiSU-Ultra-Kernel.zip *
 
-      - name: 8. 上传构建刷机包
+      - name: 7. 上传产物
         uses: actions/upload-artifact@v4
         with:
           name: Meizu-16T-SukiSU-Ultra-Kernel
