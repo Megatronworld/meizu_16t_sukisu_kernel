@@ -70,15 +70,19 @@ jobs:
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 6. 开始编译内核 (指定 meizu_defconfig 并全速冲刺)
+      - name: 6. 开始编译内核 (自动查找并使用真实 defconfig)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
           mkdir -p out
           
-          # 核心修复：直接锁定绝对正确的 meizu_defconfig
-          CONFIG_NAME="meizu_defconfig"
-          echo "Using config: $CONFIG_NAME"
+          echo "=== Listing all available defconfigs ==="
+          ls -l arch/arm64/configs/
+          
+          # 核心修复：自动匹配目录下的第一个有效 defconfig 文件
+          CONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
+          CONFIG_NAME=$(basename "$CONFIG_FILE")
+          echo "Auto-selected config: $CONFIG_NAME"
           
           make O=out "$CONFIG_NAME"
           
