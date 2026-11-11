@@ -1,4 +1,4 @@
-name: Build Meizu 16T SukiSU Ultra Kernel (V116 Fix Undefined Reference)
+name: Build Meizu 16T SukiSU Ultra Kernel (V117 Ultimate All-In-One)
 
 on:
   workflow_dispatch:
@@ -42,30 +42,39 @@ jobs:
           find . -type f \( -name "Kconfig*" -o -name "*.mk" -o -name "Makefile" \) 2>/dev/null | xargs sed -i 's/CONFIG_SKS_SCHED=y/# CONFIG_SKS_SCHED is not set/g' || true
           find . -type f \( -name "Kconfig*" -o -name "*.mk" -o -name "Makefile" \) 2>/dev/null | xargs sed -i 's/CONFIG_KSU_SUSFS_SCHED=y/# CONFIG_KSU_SUSFS_SCHED is not set/g' || true
 
-      - name: 4. 前置基础修补：注入兼容层、空桩及外设屏蔽
+      - name: 4. 终极兼容层：使用宏映射完美规避重定义与未定义冲突
         run: |
           mkdir -p include/linux/backport
           cat << 'BACKPORT' > include/linux/backport/sukisu_compat.h
           #ifndef __SUKISU_COMPAT_H
           #define __SUKISU_COMPAT_H
+
           #ifndef CONFIG_UCLAMP_BUCKETS_COUNT
           #define CONFIG_UCLAMP_BUCKETS_COUNT 5
           #endif
+
           struct uclamp_se {
               unsigned int value;
               unsigned int bucket;
           };
+
           #ifndef FULL_THROTTLE_BOOST
           #define FULL_THROTTLE_BOOST 0
           #endif
+
           #ifndef sukiSU_ks
           #define sukiSU_ks(x) (0)
           #endif
-          
-          // 核心增补：为链接器提供缺失符号的内联空桩，彻底消除 undefined reference 报错
-          static inline int sched_isolate_cpu(int cpu) { return 0; }
-          static inline int sched_unisolate_cpu_unlocked(int cpu) { return 0; }
-          static inline void trace_sched_load_balance_skip_tasks(void) {}
+
+          // 核心绝招：改用宏定义安全接管调度钩子，彻底避免与 core.c 的实体函数重定义冲突
+          #undef sched_isolate_cpu
+          #define sched_isolate_cpu(cpu) (0)
+
+          #undef sched_unisolate_cpu_unlocked
+          #define sched_unisolate_cpu_unlocked(cpu) (0)
+
+          #undef trace_sched_load_balance_skip_tasks
+          #define trace_sched_load_balance_skip_tasks() do { } while (0)
 
           #endif
           BACKPORT
@@ -117,7 +126,7 @@ jobs:
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 6. 开始编译内核 (全速冲刺刷机包)
+      - name: 6. 全速编译内核并打包刷机包
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
