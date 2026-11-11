@@ -31,7 +31,7 @@ jobs:
           
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
-      - name: 4. 核心手术：剥离不兼容调度钩子、补齐中断宏，并直接移除冲突的旧输入外设驱动
+      - name: 4. 核心手术：全局清理所有冲突的 Cypress 及 Synaptics 旧输入驱动
         run: |
           if [ -f "kernel/sched/core.c" ]; then
             sed -i '/NOHZ_BALANCE_KICK/s/^/\/* /; /NOHZ_BALANCE_KICK/s/$/ *\//' kernel/sched/core.c || true
@@ -42,10 +42,8 @@ jobs:
             sed -i '1i #ifndef IRQ_TYPE_LEVEL_HIGH\n#define IRQ_TYPE_LEVEL_HIGH 0x00000004\n#endif\n#ifndef IRQ_TYPE_EDGE_RISING\n#define IRQ_TYPE_EDGE_RISING 0x00000001\n#endif' drivers/media/rc/msm-geni-ir.c || true
           fi
           
-          # 终极净化：直接将报错的 synaptics 和 cypress 鼠标/触控驱动移出编译视线，永绝后患
-          rm -rf drivers/input/mouse/synaptics.c drivers/input/touchscreen/cypress_s32.c drivers/input/touchscreen/cypress_tcs.c || true
-          sed -i '/synaptics/d' drivers/input/mouse/Makefile || true
-          sed -i '/cypress/d' drivers/input/touchscreen/Makefile || true
+          # 终极净化：通过模糊匹配直接删掉所有带 cypress 和 synaptics 的源文件
+          find drivers/input/ -name "*cypress*" -o -name "*synaptics*" | xargs rm -rf || true
 
       - name: 5. 部署 VDSO 桩与防重定义宏
         run: |
@@ -81,6 +79,7 @@ jobs:
           
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/g' out/.config || true
           sed -i 's/CONFIG_HAVE_GCC_PLUGINS=y/# CONFIG_HAVE_GCC_PLUGINS is not set/g' out/.config || true
+          sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO=y/# CONFIG_VDSO is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO32=y/# CONFIG_VDSO32 is not set/g' out/.config || true
           sed -i 's/CONFIG_KASAN=y/# CONFIG_KASAN is not set/g' out/.config || true
