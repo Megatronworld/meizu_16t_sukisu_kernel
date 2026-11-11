@@ -1,4 +1,4 @@
-name: Build Meizu 16T SukiSU Ultra Kernel (V118 Final)
+name: Build Meizu 16T SukiSU Ultra Kernel (V119 Fix)
 
 on:
   workflow_dispatch:
@@ -78,20 +78,22 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           mkdir -p out
-          CONFIG_FILE=\$(find arch/arm64/configs -name "*defconfig" | head -n 1)
-          make O=out \$(basename "\$CONFIG_FILE")
+          CONFIG_FILE=`find arch/arm64/configs -name "*defconfig" | head -n 1`
+          CONFIG_NAME=`basename "$CONFIG_FILE"`
+          make O=out "$CONFIG_NAME"
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO is not set/g' out/.config || true
           echo "CONFIG_GCC_PLUGINS=n" >> out/.config
           echo "CONFIG_VDSO=n" >> out/.config
           yes "" | make O=out oldconfig
-          make O=out -j\$(nproc) CC=aarch64-linux-gnu-gcc HOSTCC=gcc CROSS_COMPILE=aarch64-linux-gnu- KCFLAGS="-w -Wno-error" CONFIG_NO_ERROR_ON_MISMATCH=y
+          make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc CROSS_COMPILE=aarch64-linux-gnu- KCFLAGS="-w -Wno-error" CONFIG_NO_ERROR_ON_MISMATCH=y
 
       - name: 6. 生成 AnyKernel3 刷机包并上传
         run: |
           git clone --depth=1 https://github.com/kernel-sakers/AnyKernel3.git anykernel
           rm -rf anykernel/.git
-          cp \$(find out/ -name "Image.gz-dtb" -o -name "Image" | head -n 1) anykernel/Image.gz-dtb
+          IMG_PATH=`find out/ -name "Image.gz-dtb" -o -name "Image" | head -n 1`
+          cp "$IMG_PATH" anykernel/Image.gz-dtb
           cd anykernel && zip -r ../Meizu-16T-SukiSU-Ultra-Kernel.zip *
 
       - name: 7. 上传产物
