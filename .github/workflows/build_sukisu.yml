@@ -11,10 +11,15 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/mokee/android_kernel_meizu_sm8150.git . -b mkq-mr1 || git clone --depth=1 https://github.com/LineageOS/android_kernel_xiaomi_msm8150.git . -b lineage-20
 
-      - name: 2. 安装完备的 GCC 交叉编译与构建依赖
+      - name: 2. 安装完备的 GCC 交叉编译与构建依赖 (含网络重试与 DNS 容灾)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
+          sudo apt-get clean
+          for i in {1..3}; do
+            sudo apt-get update && break || sleep 5
+          done
+          for i in {1..3}; do
+            sudo apt-get install -y --fix-missing build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu && break || sleep 5
+          done
 
       - name: 3. 下载集成 SukiSU 源码并清理 #error
         run: |
@@ -73,7 +78,7 @@ jobs:
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 6. 开始编译内核 (绝对最后防线：编译前夕终极清算 SukiSU 调度冲突并全速冲刺)
+      - name: 6. 开始编译内核 (编译前夕终极清算 SukiSU 调度冲突并全速冲刺)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -99,7 +104,6 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 核心杀招：在编译指令发出的前一秒，再次用 Python 递归全网大扫除，彻底灭掉任何漏网的 sukiSU_ks
           python3 -c "
           import os
           for root, dirs, files in os.walk('.'):
@@ -119,7 +123,6 @@ jobs:
                                       new_lines.append(line)
                               with open(filepath, 'w', encoding='utf-8') as f:
                                   f.write('\n'.join(new_lines) + '\n')
-                              print(f'Final purge in: {filepath}')
                       except Exception:
                           pass
           " || true
