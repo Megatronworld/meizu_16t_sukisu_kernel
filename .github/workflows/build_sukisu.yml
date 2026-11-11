@@ -7,9 +7,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: 1. 检出魅族 sm8150 平台内核源码
+      - name: 1. 严格检出魅族 16T sm8150 平台内核源码 (禁止回退)
         run: |
-          git clone --depth=1 https://github.com/mokee/android_kernel_meizu_sm8150.git . -b mkq-mr1 || git clone --depth=1 https://github.com/LineageOS/android_kernel_xiaomi_msm8150.git . -b lineage-20
+          git clone --depth=1 https://github.com/mokee/android_kernel_meizu_sm8150.git . -b mkq-mr1 || {
+            echo "Error: Failed to clone Meizu 16T kernel source!"
+            exit 1
+          }
 
       - name: 2. 安装完备的 GCC 交叉编译与构建依赖 (含重试)
         run: |
@@ -105,7 +108,6 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 核心杀招：使用 Python 正则表达式全局精准匹配并替换所有 sukiSU_ks(...) 为空语句
           python3 -c "
           import os, re
           for root, dirs, files in os.walk('.'):
@@ -116,12 +118,10 @@ jobs:
                           with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
                               content = f.read()
                           if 'sukiSU_ks' in content or 'rax_allowed' in content:
-                              # 用正则将包含 sukiSU_ks(...) 的整行或表达式替换为空
                               new_content = re.sub(r'.*sukiSU_ks.*', '/* Regex purged sukiSU_ks */', content)
                               new_content = re.sub(r'.*rax_allowed.*', '/* Regex purged rax_allowed */', new_content)
                               with open(filepath, 'w', encoding='utf-8') as f:
                                   f.write(new_content)
-                              print(f'Regex cleaned: {filepath}')
                       except Exception:
                           pass
           " || true
