@@ -31,7 +31,7 @@ jobs:
           
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
-      - name: 4. 核心手术：安全清理调度钩子与红外中断宏
+      - name: 4. 核心手术：安全清理调度钩子、红外中断宏，并彻底抹除 mouse/touchscreen 冲突
         run: |
           if [ -f "kernel/sched/core.c" ]; then
             sed -i '/NOHZ_BALANCE_KICK/s/^/\/* /; /NOHZ_BALANCE_KICK/s/$/ *\//' kernel/sched/core.c || true
@@ -48,7 +48,11 @@ jobs:
             sed -i '1i #ifndef IRQ_TYPE_LEVEL_HIGH\n#define IRQ_TYPE_LEVEL_HIGH 0x00000004\n#endif\n#ifndef IRQ_TYPE_EDGE_RISING\n#define IRQ_TYPE_EDGE_RISING 0x00000001\n#endif' drivers/media/rc/msm-geni-ir.c || true
           fi
           
-          rm -f drivers/input/touchscreen/cypress* drivers/input/mouse/synaptics* 2>/dev/null || true
+          # 终极净化：直接删掉整个 mouse 驱动目录，从根本上杜绝 psmouse 报错
+          rm -rf drivers/input/mouse drivers/input/touchscreen/cypress* 2>/dev/null || true
+          if [ -f "drivers/input/Makefile" ]; then
+            sed -i '/obj-\$(CONFIG_INPUT_MOUSE)/s/^/#/' drivers/input/Makefile || true
+          fi
 
       - name: 5. 部署 VDSO 桩与防重定义宏
         run: |
@@ -70,19 +74,15 @@ jobs:
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 6. 开始编译内核 (自动查找并使用真实 defconfig)
+      - name: 6. 开始编译内核 (自动查找并应用 defconfig)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
           mkdir -p out
           
-          echo "=== Listing all available defconfigs ==="
-          ls -l arch/arm64/configs/
-          
-          # 核心修复：自动匹配目录下的第一个有效 defconfig 文件
           CONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
           CONFIG_NAME=$(basename "$CONFIG_FILE")
-          echo "Auto-selected config: $CONFIG_NAME"
+          echo "Using config: $CONFIG_NAME"
           
           make O=out "$CONFIG_NAME"
           
