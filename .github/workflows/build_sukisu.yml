@@ -31,14 +31,13 @@ jobs:
           
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
-      - name: 4. 核心手术：安全剥离 core.c 与 fair.c 中的不兼容高版本调度钩子
+      - name: 4. 核心手术：安全剥离不兼容的高版本调度与外设驱动钩子
         run: |
           if [ -f "kernel/sched/core.c" ]; then
             sed -i '/NOHZ_BALANCE_KICK/s/^/\/* /; /NOHZ_BALANCE_KICK/s/$/ *\//' kernel/sched/core.c || true
             sed -i '/nonz_flags/s/^/\/* /; /nonz_flags/s/$/ *\//' kernel/sched/core.c || true
           fi
           
-          # 核心修复：将 fair.c 中引入的高版本 UCLAMP 和 sched_load_balance_skip_tasks 冲突行安全注释
           if [ -f "kernel/sched/fair.c" ]; then
             sed -i '/UCLAMP_MAX/s/^/\/* /; /UCLAMP_MAX/s/$/ *\//' kernel/sched/fair.c || true
             sed -i '/sched_load_balance_skip_tasks/s/^/\/* /; /sched_load_balance_skip_tasks/s/$/ *\//' kernel/sched/fair.c || true
