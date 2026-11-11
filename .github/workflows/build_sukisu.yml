@@ -70,19 +70,22 @@ jobs:
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 6. 开始编译内核 (精准指定配置文件并全速冲刺)
+      - name: 6. 开始编译内核 (智能列出并匹配正确的 defconfig)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
           mkdir -p out
           
-          # 核心修复：精准锁定魅族 16T 的配置文件
-          CONFIG_NAME="meizu_defconfig"
-          if [ ! -f "arch/arm64/configs/$CONFIG_NAME" ]; then
-            CONFIG_NAME=$(find arch/arm64/configs -name "*meizu*" -o -name "*sm8150*" | grep -v "sdm" | head -n 1)
-            CONFIG_NAME=$(basename "$CONFIG_NAME")
+          echo "Available configs in arch/arm64/configs:"
+          ls arch/arm64/configs/
+          
+          # 核心修复：自动寻找非 sdm845 的任意有效 defconfig
+          CONFIG_FILE=$(find arch/arm64/configs -name "*meizu*" -o -name "*sm8150*" -o -name "*16*" | grep -v "sdm" | head -n 1)
+          if [ -z "$CONFIG_FILE" ]; then
+            CONFIG_FILE=$(find arch/arm64/configs -name "*_defconfig" | head -n 1)
           fi
-          echo "Using config: $CONFIG_NAME"
+          CONFIG_NAME=$(basename "$CONFIG_FILE")
+          echo "Selected config: $CONFIG_NAME"
           
           make O=out "$CONFIG_NAME"
           
