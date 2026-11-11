@@ -1,4 +1,4 @@
-name: Build Meizu 16T SukiSU Ultra Kernel (V114 Final Purge)
+name: Build Meizu 16T SukiSU Ultra Kernel (V115 Fix Makefile)
 
 on:
   workflow_dispatch:
@@ -82,17 +82,28 @@ jobs:
           fi
           rm -f drivers/input/touchscreen/cypress*.c 2>/dev/null || true
 
-      - name: 5. 终极 VDSO 斩草除根：抹除 vdso_prepare 依赖并伪造桩文件
+      - name: 5. 安全处理 VDSO 桩：使用 Python 精准剥离 vdso_prepare 依赖防损坏格式
         run: |
           git checkout Makefile arch/arm64/Makefile arch/arm64/kernel/signal.c || true
 
-          # 核心大招 1：在 arm64 的 Makefile 中将 vdso_prepare 规则变为空指令，彻底消除找不到目标的报错
-          if [ -f "arch/arm64/Makefile" ]; then
-            sed -i '/vdso_prepare:/,/^\S/s/^/#/' arch/arm64/Makefile || true
-            sed -i 's/vdso_prepare//g' arch/arm64/Makefile || true
-          fi
+          # 核心大招：用 Python 读取 arm64/Makefile，精准把含有 vdso_prepare 的行替换为空指令，绝不破坏 Tab 缩进
+          python3 -c "
+          path = 'arch/arm64/Makefile'
+          if os.path.exists(path):
+              with open(path, 'r', encoding='utf-8') as f:
+                  lines = f.readlines()
+              new_lines = []
+              for line in lines:
+                  if 'vdso_prepare' in line:
+                      new_lines.append('# ' + line)
+                  else:
+                      new_lines.append(line)
+              with open(path, 'w', encoding='utf-8') as f:
+                  f.writelines(new_lines)
+              print('Successfully neutralized vdso_prepare in arm64/Makefile safely!')
+          " || true
 
-          # 核心大招 2：直接在全局 include/generated 和编译目标目录中提前创造好 vdso-offsets.h 桩文件
+          # 提前伪造好 vdso-offsets.h 桩文件
           mkdir -p include/generated arch/arm64/include/generated
           
           cat << 'HEADER' > include/generated/vdso-offsets.h
