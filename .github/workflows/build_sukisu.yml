@@ -46,7 +46,6 @@ jobs:
             sed -i '/nonz_flags/s/^/\/* /; /nonz_flags/s/$/ *\//' kernel/sched/core.c || true
           fi
           
-          # 核心升级：对整个 kernel/sched/ 目录下的所有 .c 文件头部统一注入 FULL_THROTTLE_BOOST 防御宏
           for f in kernel/sched/*.c; do
             if [ -f "$f" ]; then
               sed -i '1i #ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif' "$f" || true
@@ -87,7 +86,7 @@ jobs:
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 6. 开始编译内核 (编译前夕终极净化并全速冲刺)
+      - name: 6. 开始编译内核 (编译前夕终极扩大清洗并全速冲刺)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -114,7 +113,7 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 核心杀招：在编译前夕对 sched 目录下的文件进行联合清洗
+          # 核心杀招：扩大清洗范围，对 kernel/sched/ 下所有文件扫描 suki、ksu、cpumask_bits、rax_allowed 并统一中和
           python3 -c "
           import os
           for fname in os.listdir('kernel/sched'):
@@ -124,13 +123,14 @@ jobs:
                       lines = f.readlines()
                   new_lines = []
                   for line in lines:
-                      if 'cpumask_bits' in line or 'sukiSU_ks' in line or 'rax_allowed' in line:
-                          new_lines.append('    /* Neutralized by V108 */ 0;\n')
+                      lower_line = line.lower()
+                      if 'suki' in lower_line or 'ksu_' in lower_line or 'cpumask_bits' in lower_line or 'rax_allowed' in lower_line:
+                          new_lines.append('    /* Neutralized by V109 */ 0;\n')
                       else:
                           new_lines.append(line)
                   with open(path, 'w', encoding='utf-8') as f:
                       f.writelines(new_lines)
-          print('Successfully neutralized scheduling conflicts across kernel/sched!')
+          print('Successfully neutralized all extended SukiSU/ksu scheduler hooks across kernel/sched!')
           " || true
           
           make O=out -j$(nproc) \
