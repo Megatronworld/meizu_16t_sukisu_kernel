@@ -31,18 +31,23 @@ jobs:
           
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
-      - name: 4. 核心手术：安全清理调度钩子与红外中断宏
+      - name: 4. 核心手术：安全剥离 core.c 与 fair.c 中的不兼容高版本调度钩子
         run: |
           if [ -f "kernel/sched/core.c" ]; then
             sed -i '/NOHZ_BALANCE_KICK/s/^/\/* /; /NOHZ_BALANCE_KICK/s/$/ *\//' kernel/sched/core.c || true
             sed -i '/nonz_flags/s/^/\/* /; /nonz_flags/s/$/ *\//' kernel/sched/core.c || true
           fi
           
+          # 核心修复：将 fair.c 中引入的高版本 UCLAMP 和 sched_load_balance_skip_tasks 冲突行安全注释
+          if [ -f "kernel/sched/fair.c" ]; then
+            sed -i '/UCLAMP_MAX/s/^/\/* /; /UCLAMP_MAX/s/$/ *\//' kernel/sched/fair.c || true
+            sed -i '/sched_load_balance_skip_tasks/s/^/\/* /; /sched_load_balance_skip_tasks/s/$/ *\//' kernel/sched/fair.c || true
+          fi
+          
           if [ -f "drivers/media/rc/msm-geni-ir.c" ]; then
             sed -i '1i #ifndef IRQ_TYPE_LEVEL_HIGH\n#define IRQ_TYPE_LEVEL_HIGH 0x00000004\n#endif\n#ifndef IRQ_TYPE_EDGE_RISING\n#define IRQ_TYPE_EDGE_RISING 0x00000001\n#endif' drivers/media/rc/msm-geni-ir.c || true
           fi
           
-          # 绝对安全的静默清理，不触发任何非零退出
           rm -f drivers/input/touchscreen/cypress* drivers/input/mouse/synaptics* 2>/dev/null || true
 
       - name: 5. 部署 VDSO 桩与防重定义宏
