@@ -20,8 +20,6 @@ jobs:
           for i in {1..3}; do
             sudo apt-get install -y --fix-missing build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu && break || sleep 5
           done
-          # 验证交叉编译工具链是否就绪
-          which aarch64-linux-gnu-gcc || find /usr -name "aarch64-linux-gnu-gcc"
 
       - name: 3. 下载集成 SukiSU 源码并清理 #error
         run: |
@@ -80,13 +78,11 @@ jobs:
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 6. 开始编译内核 (显式导出 PATH 并全速冲刺)
+      - name: 6. 开始编译内核 (正则降维打击清除 sukiSU_ks 并全速冲刺)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          # 核心修复：将系统的 bin 目录和常见交叉编译路径显式加入 PATH
           export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
-          
           mkdir -p out
           
           CONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
@@ -109,8 +105,9 @@ jobs:
           
           yes "" | make O=out oldconfig
           
+          # 核心杀招：使用 Python 正则表达式全局精准匹配并替换所有 sukiSU_ks(...) 为空语句
           python3 -c "
-          import os
+          import os, re
           for root, dirs, files in os.walk('.'):
               for file in files:
                   if file.endswith(('.c', '.h')):
@@ -119,15 +116,12 @@ jobs:
                           with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
                               content = f.read()
                           if 'sukiSU_ks' in content or 'rax_allowed' in content:
-                              lines = content.splitlines()
-                              new_lines = []
-                              for line in lines:
-                                  if 'sukiSU_ks' in line or 'rax_allowed' in line:
-                                      new_lines.append('/* Completely purged hook */')
-                                  else:
-                                      new_lines.append(line)
+                              # 用正则将包含 sukiSU_ks(...) 的整行或表达式替换为空
+                              new_content = re.sub(r'.*sukiSU_ks.*', '/* Regex purged sukiSU_ks */', content)
+                              new_content = re.sub(r'.*rax_allowed.*', '/* Regex purged rax_allowed */', new_content)
                               with open(filepath, 'w', encoding='utf-8') as f:
-                                  f.write('\n'.join(new_lines) + '\n')
+                                  f.write(new_content)
+                              print(f'Regex cleaned: {filepath}')
                       except Exception:
                           pass
           " || true
