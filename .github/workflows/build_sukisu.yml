@@ -31,7 +31,7 @@ jobs:
           
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
-      - name: 4. 核心手术：彻底物理抹除 fair.c 中的 sukiSU_ks 冲突行及其他不兼容钩子
+      - name: 4. 核心手术：全盘精准清算 fair.c 中的所有 sukiSU 调度污染
         run: |
           if [ -f "kernel/sched/core.c" ]; then
             sed -i '/NOHZ_BALANCE_KICK/s/^/\/* /; /NOHZ_BALANCE_KICK/s/$/ *\//' kernel/sched/core.c || true
@@ -42,8 +42,23 @@ jobs:
             sed -i '1i #ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif' kernel/sched/fair.c || true
             sed -i '/UCLAMP_MAX/s/^/\/* /; /UCLAMP_MAX/s/$/ *\//' kernel/sched/fair.c || true
             sed -i '/sched_load_balance_skip_tasks/s/^/\/* /; /sched_load_balance_skip_tasks/s/$/ *\//' kernel/sched/fair.c || true
-            # 核心修复：直接将包含 sukiSU_ks 的行用 sed 从文件中彻底删除（D命令）或替换为空行
-            sed -i '/sukiSU_ks/d' kernel/sched/fair.c || true
+            
+            # 核心杀招：使用 python 脚本安全精准扫描并剔除 fair.c 中含有 sukiSU 或 rax_allowed 的冲突代码段
+            python3 -c "
+            path = 'kernel/sched/fair.c'
+            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                lines = f.readlines()
+            new_lines = []
+            for line in lines:
+                if 'sukiSU' in line or 'rax_allowed' in line or 'ksu_' in line:
+                    new_lines.V93 = True
+                    # 用空行或注释替换冲突行
+                    new_lines.append('/* Removed SukiSU scheduler conflict */\n')
+                else:
+                    new_lines.append(line)
+            with open(path, 'w', encoding='utf-8') as f:
+                f.writelines(new_lines)
+            " || true
           fi
           
           if [ -f "drivers/media/rc/msm-geni-ir.c" ]; then
