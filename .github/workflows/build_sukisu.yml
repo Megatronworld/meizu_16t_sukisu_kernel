@@ -31,7 +31,7 @@ jobs:
           
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
-      - name: 4. 核心手术：安全清理调度钩子、红外中断宏，并优雅清空 mouse 源码而不破坏 Kconfig
+      - name: 4. 核心手术：安全清理调度钩子、红外中断宏，并在父级 Makefile 中彻底屏蔽 mouse 目录
         run: |
           if [ -f "kernel/sched/core.c" ]; then
             sed -i '/NOHZ_BALANCE_KICK/s/^/\/* /; /NOHZ_BALANCE_KICK/s/$/ *\//' kernel/sched/core.c || true
@@ -48,11 +48,11 @@ jobs:
             sed -i '1i #ifndef IRQ_TYPE_LEVEL_HIGH\n#define IRQ_TYPE_LEVEL_HIGH 0x00000004\n#endif\n#ifndef IRQ_TYPE_EDGE_RISING\n#define IRQ_TYPE_EDGE_RISING 0x00000001\n#endif' drivers/media/rc/msm-geni-ir.c || true
           fi
           
-          # 核心修复：保留 Kconfig 骨架文件，仅清空鼠标驱动的 .c 源码并将 Makefile 置空
-          rm -f drivers/input/mouse/*.c drivers/input/touchscreen/cypress*.c 2>/dev/null || true
-          if [ -f "drivers/input/mouse/Makefile" ]; then
-            echo "# Empty Makefile" > drivers/input/mouse/Makefile
+          # 核心修复：直接在 drivers/input/Makefile 中注释掉 mouse 目录，使其不参与任何编译
+          if [ -f "drivers/input/Makefile" ]; then
+            sed -i '/mouse/s/^/#/' drivers/input/Makefile || true
           fi
+          rm -f drivers/input/touchscreen/cypress*.c 2>/dev/null || true
 
       - name: 5. 部署 VDSO 桩与防重定义宏
         run: |
@@ -74,7 +74,7 @@ jobs:
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 6. 开始编译内核 (自动查找并应用 defconfig)
+      - name: 6. 开始编译内核 (全速冲刺终点)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
