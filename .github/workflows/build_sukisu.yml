@@ -1,4 +1,4 @@
-name: Build Meizu 16T SukiSU Ultra Kernel (V120 Fix Host Tools)
+name: Build Meizu 16T SukiSU Ultra Kernel (V121 Perfect Fix)
 
 on:
   workflow_dispatch:
@@ -31,7 +31,7 @@ jobs:
           find . -type f \( -name "Kconfig*" -o -name "*.mk" -o -name "Makefile" \) 2>/dev/null | xargs sed -i 's/CONFIG_SKS_SCHED=y/# CONFIG_SKS_SCHED is not set/g' || true
           find . -type f \( -name "Kconfig*" -o -name "*.mk" -o -name "Makefile" \) 2>/dev/null | xargs sed -i 's/CONFIG_KSU_SUSFS_SCHED=y/# CONFIG_KSU_SUSFS_SCHED is not set/g' || true
 
-      - name: 4. 注入弱符号兼容层与 VDSO 桩
+      - name: 4. 注入完美兼容层与 VDSO 桩
         run: |
           mkdir -p include/linux/backport
           cat << 'BACKPORT' > include/linux/backport/sukisu_compat.h
@@ -47,11 +47,17 @@ jobs:
           #ifndef sukiSU_ks
           #define sukiSU_ks(x) (0)
           #endif
-          #ifndef __ASSEMBLY__
-          int __attribute__((weak)) sched_isolate_cpu(int cpu) { return 0; }
-          int __attribute__((weak)) sched_unisolate_cpu_unlocked(int cpu) { return 0; }
-          void __attribute__((weak)) trace_sched_load_balance_skip_tasks(void) {}
+          
+          /* 核心修正：仅当外部未定义时提供安全内联桩，避免与 core.c 的实体发生重定义冲突 */
+          #ifndef CONFIG_SCHED_ISOLATE
+          static inline int sched_isolate_cpu(int cpu) { return 0; }
+          static inline int sched_unisolate_cpu_unlocked(int cpu) { return 0; }
           #endif
+          
+          #ifndef ARCH_HAS_TRACE_SKIP_TASKS
+          static inline void trace_sched_load_balance_skip_tasks(void) {}
+          #endif
+
           #endif
           BACKPORT
           if [ -f "include/linux/sched.h" ]; then
@@ -73,7 +79,7 @@ jobs:
           cp include/generated/vdso-offsets.h arch/arm64/include/generated/vdso-offsets.h || true
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 5. 编译内核并打包刷机包 (加入 -fcommon 解决主机工具多重定义)
+      - name: 5. 编译内核并打包刷机包
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
