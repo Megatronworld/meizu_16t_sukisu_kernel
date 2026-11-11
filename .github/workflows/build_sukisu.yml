@@ -31,7 +31,7 @@ jobs:
           
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
-      - name: 4. 全方位前置手术：调度钩子、红外中断宏、鼠标子目录屏蔽及潜在类型兼容加固
+      - name: 4. 核心手术：深度剥离旧内核不兼容的调度钩子、sukiSU_ks 宏及外设屏蔽
         run: |
           if [ -f "kernel/sched/core.c" ]; then
             sed -i '/NOHZ_BALANCE_KICK/s/^/\/* /; /NOHZ_BALANCE_KICK/s/$/ *\//' kernel/sched/core.c || true
@@ -42,13 +42,14 @@ jobs:
             sed -i '1i #ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif' kernel/sched/fair.c || true
             sed -i '/UCLAMP_MAX/s/^/\/* /; /UCLAMP_MAX/s/$/ *\//' kernel/sched/fair.c || true
             sed -i '/sched_load_balance_skip_tasks/s/^/\/* /; /sched_load_balance_skip_tasks/s/$/ *\//' kernel/sched/fair.c || true
+            # 核心修复：将 fair.c 中引发报错的高版本 sukiSU_ks 调度钩子全部安全注释
+            sed -i '/sukiSU_ks/s/^/\/* /; /sukiSU_ks/s/$/ *\//' kernel/sched/fair.c || true
           fi
           
           if [ -f "drivers/media/rc/msm-geni-ir.c" ]; then
             sed -i '1i #ifndef IRQ_TYPE_LEVEL_HIGH\n#define IRQ_TYPE_LEVEL_HIGH 0x00000004\n#endif\n#ifndef IRQ_TYPE_EDGE_RISING\n#define IRQ_TYPE_EDGE_RISING 0x00000001\n#endif' drivers/media/rc/msm-geni-ir.c || true
           fi
           
-          # 在父级 Makefile 中彻底屏蔽 mouse 目录
           if [ -f "drivers/input/Makefile" ]; then
             sed -i '/mouse/s/^/#/' drivers/input/Makefile || true
           fi
@@ -74,7 +75,7 @@ jobs:
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 6. 开始编译内核 (全速冲刺终点并注入强容错编译参数)
+      - name: 6. 开始编译内核 (全速冲刺终点)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -100,14 +101,13 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 核心增强：通过更宽容的 KCFLAGS 兜底后续可能出现的隐式声明、指针格式或未初始化警告转错误
           make O=out -j$(nproc) \
             CC=aarch64-linux-gnu-gcc \
             HOSTCC=gcc \
             HOSTCXX=g++ \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            KCFLAGS="-Wno-error -Wno-array-bounds -Wno-stringop-overflow -Wno-error=incompatible-pointer-types -Wno-error=implicit-function-declaration -Wno-error=unused-variable -Wno-error=frame-address" \
+            KCFLAGS="-Wno-error -Wno-array-bounds -Wno-stringop-overflow -Wno-error=incompatible-pointer-types -Wno-error=implicit-function-declaration" \
             HOSTCFLAGS="-std=gnu89 -fcommon" \
             CONFIG_NO_ERROR_ON_MISMATCH=y
 
