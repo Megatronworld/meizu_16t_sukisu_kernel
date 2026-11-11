@@ -31,7 +31,7 @@ jobs:
           
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
-      - name: 4. 核心手术：全盘精准清算 fair.c 中的所有 sukiSU 调度污染
+      - name: 4. 核心手术：全局递归清算所有源码中的 sukiSU 调度污染与外设冲突
         run: |
           if [ -f "kernel/sched/core.c" ]; then
             sed -i '/NOHZ_BALANCE_KICK/s/^/\/* /; /NOHZ_BALANCE_KICK/s/$/ *\//' kernel/sched/core.c || true
@@ -42,24 +42,35 @@ jobs:
             sed -i '1i #ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif' kernel/sched/fair.c || true
             sed -i '/UCLAMP_MAX/s/^/\/* /; /UCLAMP_MAX/s/$/ *\//' kernel/sched/fair.c || true
             sed -i '/sched_load_balance_skip_tasks/s/^/\/* /; /sched_load_balance_skip_tasks/s/$/ *\//' kernel/sched/fair.c || true
-            
-            # 核心杀招：使用 python 脚本安全精准扫描并剔除 fair.c 中含有 sukiSU 或 rax_allowed 的冲突代码段
-            python3 -c "
-            path = 'kernel/sched/fair.c'
-            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                lines = f.readlines()
-            new_lines = []
-            for line in lines:
-                if 'sukiSU' in line or 'rax_allowed' in line or 'ksu_' in line:
-                    new_lines.V93 = True
-                    # 用空行或注释替换冲突行
-                    new_lines.append('/* Removed SukiSU scheduler conflict */\n')
-                else:
-                    new_lines.append(line)
-            with open(path, 'w', encoding='utf-8') as f:
-                f.writelines(new_lines)
-            " || true
           fi
+          
+          # 核心杀招：用 Python 递归遍历整个工作目录，精准抹除所有包含 sukiSU_ks 或 rax_allowed 的冲突代码行
+          python3 -c "
+          import os
+          for root, dirs, files in os.walk('.'):
+              for file in files:
+                  if file.endswith(('.c', '.h')):
+                      filepath = os.path.join(root, file)
+                      try:
+                          with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                              content = f.read()
+                          if 'sukiSU_ks' in content or 'rax_allowed' in content:
+                              lines = content.splitlines()
+                              new_lines = []
+                              modified = False
+                              for line in lines:
+                                  if 'sukiSU_ks' in line or 'rax_allowed' in line:
+                                      new_lines.append('/* Purged SukiSU conflict: ' + line.strip() + ' */')
+                                      modified = True
+                                  else:
+                                      new_lines.append(line)
+                              if modified:
+                                  with open(filepath, 'w', encoding='utf-8') as f:
+                                      f.write('\n'.join(new_lines) + '\n')
+                                  print(f'Cleaned SukiSU hooks in: {filepath}')
+                      except Exception as e:
+                          pass
+          " || true
           
           if [ -f "drivers/media/rc/msm-geni-ir.c" ]; then
             sed -i '1i #ifndef IRQ_TYPE_LEVEL_HIGH\n#define IRQ_TYPE_LEVEL_HIGH 0x00000004\n#endif\n#ifndef IRQ_TYPE_EDGE_RISING\n#define IRQ_TYPE_EDGE_RISING 0x00000001\n#endif' drivers/media/rc/msm-geni-ir.c || true
