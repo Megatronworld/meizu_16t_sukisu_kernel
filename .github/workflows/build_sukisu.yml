@@ -1,4 +1,4 @@
-name: Build Meizu 16T SukiSU Ultra Kernel (V119 Fix)
+name: Build Meizu 16T SukiSU Ultra Kernel (V120 Fix Host Tools)
 
 on:
   workflow_dispatch:
@@ -73,7 +73,7 @@ jobs:
           cp include/generated/vdso-offsets.h arch/arm64/include/generated/vdso-offsets.h || true
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 5. 编译内核并打包刷机包
+      - name: 5. 编译内核并打包刷机包 (加入 -fcommon 解决主机工具多重定义)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -86,7 +86,14 @@ jobs:
           echo "CONFIG_GCC_PLUGINS=n" >> out/.config
           echo "CONFIG_VDSO=n" >> out/.config
           yes "" | make O=out oldconfig
-          make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc CROSS_COMPILE=aarch64-linux-gnu- KCFLAGS="-w -Wno-error" CONFIG_NO_ERROR_ON_MISMATCH=y
+          make O=out -j`nproc` \
+            CC=aarch64-linux-gnu-gcc \
+            HOSTCC=gcc \
+            HOSTCFLAGS="-std=gnu89 -fcommon" \
+            HOSTLDFLAGS="-fcommon" \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            KCFLAGS="-w -Wno-error" \
+            CONFIG_NO_ERROR_ON_MISMATCH=y
 
       - name: 6. 生成 AnyKernel3 刷机包并上传
         run: |
