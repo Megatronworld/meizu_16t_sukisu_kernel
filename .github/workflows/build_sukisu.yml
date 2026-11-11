@@ -81,7 +81,7 @@ jobs:
 
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 6. 开始编译内核 (编译前夕用 Python 绝对物理切除 fair.c 中的 sukiSU_ks 行)
+      - name: 6. 开始编译内核 (修复 Python import os 并彻底切除 fair.c 中的 sukiSU_ks)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -108,8 +108,9 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 核心绝招：在编译前一秒，用 Python 逐行扫描 fair.c，只要发现包含 sukiSU_ks 或 rax_allowed 的行，直接用空语句替代
+          # 核心修复：正确导入 import os，并精准清除 fair.c 中的冲突行
           python3 -c "
+          import os
           path = 'kernel/sched/fair.c'
           if os.path.exists(path):
               with open(path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -118,7 +119,7 @@ jobs:
               count = 0
               for line in lines:
                   if 'sukiSU_ks' in line or 'rax_allowed' in line:
-                      new_lines.append('/* Removed SukiSU hook by V101 */;\n')
+                      new_lines.append('/* Removed SukiSU hook by V102 */;\n')
                       count += 1
                   else:
                       new_lines.append(line)
