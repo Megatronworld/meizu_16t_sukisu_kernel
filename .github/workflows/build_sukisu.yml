@@ -32,11 +32,14 @@ jobs:
           # 清理所有 #error 拦截行
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
-      - name: 4. 全局核心修补：在 include/linux/sched.h 中强力定义 NOHZ_BALANCE_KICK
+      - name: 4. 全局核心修补：补齐 NOHZ_BALANCE_KICK 及相机 ISP 硬件宏
         run: |
           if [ -f "include/linux/sched.h" ]; then
             sed -i '1i #ifndef NOHZ_BALANCE_KICK\n#define NOHZ_BALANCE_KICK 0\n#endif' include/linux/sched.h || true
           fi
+          
+          # 核心修复：为相机驱动可能缺失的硬件版本宏做安全兜底
+          find drivers/media/platform/msm/ -name "*.h" -o -name "*.c" 2>/dev/null | xargs sed -i '1i #ifndef MSM_ISP_HW_VER_HOST\n#define MSM_ISP_HW_VER_HOST 0\n#endif' || true
 
       - name: 5. 部署 VDSO 桩与防重定义宏
         run: |
