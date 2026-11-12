@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V155)
+name: Build Meizu 16T Pure SukiSU Kernel (V156)
 
 on:
   workflow_dispatch:
@@ -15,32 +15,29 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并全局预判清洗所有潜在冲突
+      - name: 3. 集成 SukiSU-Ultra 并完美恢复 core.c 原厂语法
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # [排雷 1] 全局无死角清洗 kernel/sched 目录下的所有高版本调度魔改宏
+          # 核心大招：首先把 core.c 彻底恢复到 Git 原厂纯净状态，修复之前被误伤的语法错误
+          git checkout kernel/sched/core.c || true
+          
+          # 然后仅在 core.c 文件的最顶部精准插入一个兼容宏定义，把高版本调度宏在预处理阶段直接定义为 0，绝对不破坏任何函数签名！
           python3 -c "
           import os
-          sched_dir = 'kernel/sched'
-          if os.path.exists(sched_dir):
-              for root, dirs, files in os.walk(sched_dir):
-                  for file in files:
-                      if file.endswith(('.c', '.h')):
-                          path = os.path.join(root, file)
-                          with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                              lines = f.readlines()
-                          new_lines = []
-                          for line in lines:
-                              if any(macro in line for macro in ['FULL_THROTTLE_BOOST', 'NOHZ_BALANCE_KICK', 'sched_unisolate']):
-                                  new_lines.append('/* ' + line.strip() + ' */ // Preemptively sanitized for 4.14\n')
-                              else:
-                                  new_lines.append(line)
-                          with open(path, 'w', encoding='utf-8') as f:
-                              f.writelines(new_lines)
+          path = 'kernel/sched/core.c'
+          if os.path.exists(path):
+              with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                  content = f.read()
+              # 在文件头部安全插入兼容宏
+              compat_header = '#ifndef NOHZ_BALANCE_KICK\n#define NOHZ_BALANCE_KICK 0\n#endif\n#ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif\n'
+              content = compat_header + content
+              with open(path, 'w', encoding='utf-8') as f:
+                  f.write(content)
+              print('Successfully prepended safe compatibility macros to core.c')
           " || true
           
-          # [排雷 2] 彻底净化 kernel/ksu 目录，防止任何未定义的 Boost 或高版本 Trace 导致链接报错
+          # 清理 ksu 目录中未定义的调度 Boost 或 trace 符号
           python3 -c "
           import os, re
           ksu_dir = 'kernel/ksu'
@@ -53,11 +50,11 @@ jobs:
                               content = f.read()
                           content = re.sub(r'sched_boost\s*\([^)]*\);', '/* removed */', content)
                           content = re.sub(r'trace_sched_.*?;', '/* removed */', content)
-                          with open(path, 'w', encoding='utf-8', errors='ignore') as f:
+                          with open(path, 'w', encoding='utf-8') as f:
                               f.write(content)
           " || true
           
-          # [排雷 3] 提前加固多媒体与相机驱动中的中断宏与缺失符号
+          # 修复中断宏
           python3 -c "
           import os
           path = 'drivers/media/rc/msm-geni-ir.c'
@@ -120,12 +117,10 @@ jobs:
             KCFLAGS="-w -Wno-error" \
             CONFIG_NO_ERROR_ON_MISMATCH=y
 
-      - name: 6. 生成 AnyKernel3 刷机包并上传（增强容错）
+      - name: 6. 生成 AnyKernel3 刷机包并上传
         run: |
           git clone --depth=1 https://github.com/kernel-sakers/AnyKernel3.git anykernel
           rm -rf anykernel/.git
-          
-          # 稳健寻找编译出的内核镜像（支持多路径兜底）
           IMG_PATH=`find out/ -name "Image.gz-dtb" -o -name "Image" | head -n 1`
           if [ -z "$IMG_PATH" ]; then
             echo "Error: Kernel image not found!"
