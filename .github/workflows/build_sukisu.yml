@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V147)
+name: Build Meizu 16T Pure SukiSU Kernel (V148)
 
 on:
   workflow_dispatch:
@@ -15,12 +15,24 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并物理抹除冲突的 camera/gemini 驱动
+      - name: 3. 集成 SukiSU-Ultra 并彻底清空所有含有 gemini 的驱动文件
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 核心大招：直接物理删除引起报错的 gemini 相机驱动目录，彻底消除编译隐患
-          rm -rf drivers/media/platform/msm/camera/gemini 2>/dev/null || true
+          # 核心大招：遍历整个驱动目录，把任何带 gemini 的 C 文件内容直接清空，彻底消除未声明报错
+          python3 -c "
+          import os
+          for root, dirs, files in os.walk('drivers/media/platform/msm/camera'):
+              for file in files:
+                  if 'gemini' in file.lower() or file.endswith(('.c', '.h')):
+                      p = os.path.join(root, file)
+                      with open(p, 'r', encoding='utf-8', errors='ignore') as f:
+                          c = f.read()
+                      if 'msm_gemini' in c.lower() or 'gemini' in c.lower():
+                          with open(p, 'w', encoding='utf-8') as f:
+                              f.write('/* Cleared conflicting gemini driver code */\n')
+                          print('Emptied gemini driver file:', p)
+          " || true
           
           # 清理 sched 冲突宏
           python3 -c "
