@@ -1,4 +1,4 @@
-name: Build Meizu 16T SukiSU v4.1.1.59 Kernel (V130)
+name: Build Meizu 16T Pure SukiSU Kernel (V131)
 
 on:
   workflow_dispatch:
@@ -15,9 +15,13 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成指定 v4.1.1.59 版本的 SukiSU 源码
+      - name: 3. 集成 SukiSU 并彻底清理不兼容的调度扩展文件
         run: |
-          curl -LSs "https://raw.githubusercontent.com/rsuntk/SukiSU-Ultra/main/kernel/setup.sh" | bash -s v4.1.1.59 || curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v4.1.1.59
+          curl -LSs "https://raw.githubusercontent.com/rsuntk/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main || curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+          
+          # 核心大招：物理删除所有可能引起旧内核 core.c 冲突的调度文件
+          find kernel -name "*sched*" -delete 2>/dev/null || true
+          find kernel -name "*ultrask*" -delete 2>/dev/null || true
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
       - name: 4. 注入 VDSO 桩与清理状态
@@ -66,10 +70,10 @@ jobs:
           rm -rf anykernel/.git
           IMG_PATH=`find out/ -name "Image.gz-dtb" -o -name "Image" | head -n 1`
           cp "$IMG_PATH" anykernel/Image.gz-dtb
-          cd anykernel && zip -r ../Meizu-16T-SukiSU-v41159-Kernel.zip *
+          cd anykernel && zip -r ../Meizu-16T-PureSukiSU-Kernel.zip *
 
       - name: 7. 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: Meizu-16T-SukiSU-v41159-Kernel
-          path: Meizu-16T-SukiSU-v41159-Kernel.zip
+          name: Meizu-16T-PureSukiSU-Kernel
+          path: Meizu-16T-PureSukiSU-Kernel.zip
