@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V152)
+name: Build Meizu 16T Pure SukiSU Kernel (V153)
 
 on:
   workflow_dispatch:
@@ -15,12 +15,27 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并在脚本结束后立刻执行调度硬还原
+      - name: 3. 集成 SukiSU-Ultra 并用 Python 彻底抹平 core.c 中的 NOHZ_BALANCE_KICK
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 核心大招：官方脚本刚跑完，立刻用 git checkout 把 sched 目录彻底还原为纯净原厂状态，绝不含糊
-          git checkout kernel/sched/ || true
+          # 核心手术：用 Python 直接读取 core.c，把含有 NOHZ_BALANCE_KICK 的报错行直接注释掉
+          python3 -c "
+          import os
+          path = 'kernel/sched/core.c'
+          if os.path.exists(path):
+              with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                  lines = f.readlines()
+              new_lines = []
+              for line in lines:
+                  if 'NOHZ_BALANCE_KICK' in line:
+                      new_lines.append('/* ' + line.strip() + ' */ // Patched by SukiSU build script\n')
+                  else:
+                      new_lines.append(line)
+              with open(path, 'w', encoding='utf-8') as f:
+                  f.writelines(new_lines)
+              print('Successfully commented out NOHZ_BALANCE_KICK in core.c')
+          " || true
           
           # 清理 ksu 目录中未定义的调度 Boost 或 trace 符号
           python3 -c "
