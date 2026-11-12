@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V153)
+name: Build Meizu 16T Pure SukiSU Kernel (V154)
 
 on:
   workflow_dispatch:
@@ -15,26 +15,30 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并用 Python 彻底抹平 core.c 中的 NOHZ_BALANCE_KICK
+      - name: 3. 集成 SukiSU-Ultra 并全局彻底清洗 kernel/sched 目录下的所有冲突宏
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 核心手术：用 Python 直接读取 core.c，把含有 NOHZ_BALANCE_KICK 的报错行直接注释掉
+          # 核心大招：遍历整个 kernel/sched 目录，把所有高版本调度魔改宏全部用 Python 注释或归零
           python3 -c "
-          import os
-          path = 'kernel/sched/core.c'
-          if os.path.exists(path):
-              with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                  lines = f.readlines()
-              new_lines = []
-              for line in lines:
-                  if 'NOHZ_BALANCE_KICK' in line:
-                      new_lines.append('/* ' + line.strip() + ' */ // Patched by SukiSU build script\n')
-                  else:
-                      new_lines.append(line)
-              with open(path, 'w', encoding='utf-8') as f:
-                  f.writelines(new_lines)
-              print('Successfully commented out NOHZ_BALANCE_KICK in core.c')
+          import os, re
+          sched_dir = 'kernel/sched'
+          if os.path.exists(sched_dir):
+              for root, dirs, files in os.walk(sched_dir):
+                  for file in files:
+                      if file.endswith(('.c', '.h')):
+                          path = os.path.join(root, file)
+                          with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                              lines = f.readlines()
+                          new_lines = []
+                          for line in lines:
+                              if any(macro in line for macro in ['FULL_THROTTLE_BOOST', 'NOHZ_BALANCE_KICK']):
+                                  new_lines.append('/* ' + line.strip() + ' */ // Sanitized for legacy 4.14 kernel\n')
+                              else:
+                                  new_lines.append(line)
+                          with open(path, 'w', encoding='utf-8') as f:
+                              f.writelines(new_lines)
+              print('Successfully sanitized all scheduler macros in kernel/sched')
           " || true
           
           # 清理 ksu 目录中未定义的调度 Boost 或 trace 符号
