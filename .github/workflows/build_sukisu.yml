@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V134)
+name: Build Meizu 16T Pure SukiSU Kernel (V142 - Official Main Branch)
 
 on:
   workflow_dispatch:
@@ -15,28 +15,12 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU 并用 Python 彻底剥离 core.c 中的冲突调度代码
+      - name: 3. 严格参照官方文档：使用 main 分支进行动态 Kprobes 挂钩集成
         run: |
-          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main || true
+          # 官方文档标准命令：使用 SukiSU-Ultra 的 main 分支
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 核心大招：直接对内核的 sched/core.c 进行手术，把导致未声明报错的语句替换为安全空行
-          python3 -c "
-          import os
-          path = 'kernel/sched/core.c'
-          if os.path.exists(path):
-              with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                  lines = f.readlines()
-              new_lines = []
-              skip = False
-              for line in lines:
-                  if 'sched_unisolate_cpu_unlocked' in line or 'NOHZ_BALANCE_KICK' in line:
-                      new_lines.append('/* Patched out incompatible SukiSU sched hook */\n')
-                      continue
-                  new_lines.append(line)
-              with open(path, 'w', encoding='utf-8') as f:
-                  f.writelines(new_lines)
-              print('Successfully neutralized scheduler hooks in core.c')
-          " || true
+          # 清理任何可能残留的不兼容错误宏
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
       - name: 4. 注入 VDSO 桩与清理状态
@@ -65,10 +49,19 @@ jobs:
           CONFIG_FILE=`find arch/arm64/configs -name "*defconfig" | head -n 1`
           CONFIG_NAME=`basename "$CONFIG_FILE"`
           make O=out "$CONFIG_NAME"
+          
+          # 按照官方文档要求，为旧内核强制开启 Kprobes 及相关支持，关闭插件和 VDSO 冲突项
+          sed -i 's/# CONFIG_KPROBES is not set/CONFIG_KPROBES=y/g' out/.config || true
+          sed -i 's/# CONFIG_KRETPROBES is not set/CONFIG_KRETPROBES=y/g' out/.config || true
+          sed -i 's/# CONFIG_HAVE_SYSCALL_TRACEPOINTS is not set/CONFIG_HAVE_SYSCALL_TRACEPOINTS=y/g' out/.config || true
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/g' out/.config || true
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO=n/g' out/.config || true
+          echo "CONFIG_KPROBES=y" >> out/.config
+          echo "CONFIG_KRETPROBES=y" >> out/.config
+          echo "CONFIG_HAVE_SYSCALL_TRACEPOINTS=y" >> out/.config
           echo "CONFIG_GCC_PLUGINS=n" >> out/.config
           echo "CONFIG_VDSO=n" >> out/.config
+          
           yes "" | make O=out oldconfig
           make O=out -j`nproc` \
             CC=aarch64-linux-gnu-gcc \
