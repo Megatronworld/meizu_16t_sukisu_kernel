@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V144)
+name: Build Meizu 16T Pure SukiSU Kernel (V145)
 
 on:
   workflow_dispatch:
@@ -15,34 +15,29 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并用 Python 彻底改写 core.c 冲突函数
+      - name: 3. 集成 SukiSU-Ultra 并全局清洗 sched 目录下的所有冲突宏
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 核心手术：直接用 Python 找到 sched_unisolate_cpu_unlocked 函数并将其重写为空函数，彻底消除 NOHZ_BALANCE_KICK 报错
+          # 核心大招：遍历 kernel/sched 目录下的所有文件，将所有已知的冲突宏统一归零或屏蔽
           python3 -c "
           import os, re
-          path = 'kernel/sched/core.c'
-          if os.path.exists(path):
-              with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                  content = f.read()
-              
-              # 定义一个合法的安全桩函数替代整个冲突函数
-              stub = '''
-              void sched_unisolate_cpu_unlocked(void) {
-                  /* Dummy stub to satisfy SukiSU on legacy 4.14 kernel */
-              }
-              '''
-              
-              # 用正则匹配并替换整个 sched_unisolate_cpu_unlocked 函数体
-              content = re.sub(r'void\s+sched_unisolate_cpu_unlocked\s*\([^)]*\)\s*\{[^}]*\}', stub, content, flags=re.DOTALL)
-              
-              # 顺便把可能残留的宏直接替换为 0
-              content = content.replace('NOHZ_BALANCE_KICK', '0')
-              
-              with open(path, 'w', encoding='utf-8') as f:
-                  f.write(content)
-              print('Successfully stubbed out conflicting scheduler function in core.c')
+          sched_dir = 'kernel/sched'
+          if os.path.exists(sched_dir):
+              for root, dirs, files in os.walk(sched_dir):
+                  for file in files:
+                      if file.endswith(('.c', '.h')):
+                          path = os.path.join(root, file)
+                          with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                              content = f.read()
+                          
+                          # 替换所有可能引发未声明错误的调度魔改宏
+                          content = content.replace('FULL_THROTTLE_BOOST', '0')
+                          content = content.replace('NOHZ_BALANCE_KICK', '0')
+                          
+                          with open(path, 'w', encoding='utf-8') as f:
+                              f.write(content)
+              print('Successfully cleaned all scheduler macros in kernel/sched')
           " || true
           
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
