@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V157)
+name: Build Meizu 16T Pure SukiSU Kernel (V158)
 
 on:
   workflow_dispatch:
@@ -15,33 +15,26 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并加固核心调度与驱动宏定义
+      - name: 3. 集成 SukiSU-Ultra 并精准注释 fair.c 中的 FULL_THROTTLE_BOOST 报错行
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 恢复 core.c 原厂并加入兼容宏
-          git checkout kernel/sched/core.c || true
-          python3 -c "
-          import os
-          path = 'kernel/sched/core.c'
-          if os.path.exists(path):
-              with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                  content = f.read()
-              compat_header = '#ifndef NOHZ_BALANCE_KICK\n#define NOHZ_BALANCE_KICK 0\n#endif\n#ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif\n'
-              with open(path, 'w', encoding='utf-8') as f:
-                  f.write(compat_header + content)
-          " || true
-
-          # 同时在 fair.c 头部也加入兼容宏，彻底根治 FULL_THROTTLE_BOOST 报错
+          # 核心大招：精准读取 fair.c，把含有 FULL_THROTTLE_BOOST 的那几行直接注释掉
           python3 -c "
           import os
           path = 'kernel/sched/fair.c'
           if os.path.exists(path):
               with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                  content = f.read()
-              compat_header = '#ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif\n'
+                  lines = f.readlines()
+              new_lines = []
+              for line in lines:
+                  if 'FULL_THROTTLE_BOOST' in line:
+                      new_lines.append('/* ' + line.strip() + ' */ // Patched by SukiSU build script\n')
+                  else:
+                      new_lines.append(line)
               with open(path, 'w', encoding='utf-8') as f:
-                  f.write(compat_header + content)
+                  f.writelines(new_lines)
+              print('Successfully commented out FULL_THROTTLE_BOOST in fair.c')
           " || true
           
           # 清理 ksu 目录中未定义的调度 Boost 或 trace 符号
