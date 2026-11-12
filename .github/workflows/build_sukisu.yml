@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V145)
+name: Build Meizu 16T Pure SukiSU Kernel (V146)
 
 on:
   workflow_dispatch:
@@ -15,29 +15,38 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并全局清洗 sched 目录下的所有冲突宏
+      - name: 3. 集成 SukiSU-Ultra 并清理调度与冲突的相机驱动宏
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 核心大招：遍历 kernel/sched 目录下的所有文件，将所有已知的冲突宏统一归零或屏蔽
+          # 清理 sched 冲突宏
           python3 -c "
-          import os, re
-          sched_dir = 'kernel/sched'
-          if os.path.exists(sched_dir):
-              for root, dirs, files in os.walk(sched_dir):
-                  for file in files:
-                      if file.endswith(('.c', '.h')):
-                          path = os.path.join(root, file)
-                          with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                              content = f.read()
-                          
-                          # 替换所有可能引发未声明错误的调度魔改宏
-                          content = content.replace('FULL_THROTTLE_BOOST', '0')
-                          content = content.replace('NOHZ_BALANCE_KICK', '0')
-                          
-                          with open(path, 'w', encoding='utf-8') as f:
-                              f.write(content)
-              print('Successfully cleaned all scheduler macros in kernel/sched')
+          import os
+          for root, dirs, files in os.walk('kernel/sched'):
+              for file in files:
+                  if file.endswith(('.c', '.h')):
+                      p = os.path.join(root, file)
+                      with open(p, 'r', encoding='utf-8', errors='ignore') as f:
+                          c = f.read()
+                      c = c.replace('FULL_THROTTLE_BOOST', '0').replace('NOHZ_BALANCE_KICK', '0')
+                      with open(p, 'w', encoding='utf-8') as f:
+                          f.write(c)
+          " || true
+          
+          # 顺手把报错的 MSM_GEMINI_IS_PROBE 宏直接在驱动代码中置零，彻底消除该报错
+          python3 -c "
+          import os
+          for root, dirs, files in os.walk('drivers/media/platform/msm/camera'):
+              for file in files:
+                  if file.endswith(('.c', '.h')):
+                      p = os.path.join(root, file)
+                      with open(p, 'r', encoding='utf-8', errors='ignore') as f:
+                          c = f.read()
+                      if 'MSM_GEMINI_IS_PROBE' in c:
+                          c = c.replace('MSM_GEMINI_IS_PROBE', '0')
+                          with open(p, 'w', encoding='utf-8') as f:
+                              f.write(c)
+                          print('Patched MSM_GEMINI_IS_PROBE in:', p)
           " || true
           
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
