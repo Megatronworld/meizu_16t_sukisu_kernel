@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V149)
+name: Build Meizu 16T Pure SukiSU Kernel (V150)
 
 on:
   workflow_dispatch:
@@ -15,27 +15,25 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并直接清空 gemini 驱动的 Makefile 编译入口
+      - name: 3. 集成 SukiSU-Ultra 并为 msm-geni-ir.c 补齐缺失的中断宏
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 核心大招：直接把所有带 gemini 的 Makefile 文件清空，彻底阻止其参与编译
+          # 核心大招：精准定位 msm-geni-ir.c，在文件头部强制加入 IRQ_TYPE_LEVEL_HIGH 宏定义
           python3 -c "
           import os
-          for root, dirs, files in os.walk('drivers/media/platform/msm/camera'):
-              for file in files:
-                  if file == 'Makefile' or file == 'Kbuild':
-                      p = os.path.join(root, file)
-                      with open(p, 'r', encoding='utf-8', errors='ignore') as f:
-                          c = f.read()
-                      if 'gemini' in c.lower():
-                          with open(p, 'w', encoding='utf-8') as f:
-                              f.write('# Disabled gemini module\n')
-                          print('Emptied Makefile:', p)
+          path = 'drivers/media/rc/msm-geni-ir.c'
+          if os.path.exists(path):
+              with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                  content = f.read()
+              if 'IRQ_TYPE_LEVEL_HIGH' not in content:
+                  content = '#ifndef IRQ_TYPE_LEVEL_HIGH\n#define IRQ_TYPE_LEVEL_HIGH 4\n#endif\n' + content
+              else:
+                  content = content.replace('IRQ_TYPE_LEVEL_HIGH', '(4)')
+              with open(path, 'w', encoding='utf-8') as f:
+                  f.write(content)
+              print('Successfully patched IRQ_TYPE_LEVEL_HIGH in msm-geni-ir.c')
           " || true
-          
-          # 同时把 gemini 目录下的所有文件彻底删掉
-          rm -rf drivers/media/platform/msm/camera/gemini 2>/dev/null || true
           
           # 清理 sched 冲突宏
           python3 -c "
