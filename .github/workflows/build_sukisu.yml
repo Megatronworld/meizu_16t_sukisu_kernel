@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V142 - Official Main Branch)
+name: Build Meizu 16T Pure SukiSU Kernel (V143)
 
 on:
   workflow_dispatch:
@@ -15,12 +15,13 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 严格参照官方文档：使用 main 分支进行动态 Kprobes 挂钩集成
+      - name: 3. 集成 SukiSU-Ultra 并强制清理调度补丁冲突
         run: |
-          # 官方文档标准命令：使用 SukiSU-Ultra 的 main 分支
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 清理任何可能残留的不兼容错误宏
+          # 核心大招：官方脚本执行完后，立即丢弃对内核 sched 目录的所有修改，彻底根治 core.c 报错
+          git checkout kernel/sched/ || true
+          
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
       - name: 4. 注入 VDSO 桩与清理状态
@@ -50,7 +51,6 @@ jobs:
           CONFIG_NAME=`basename "$CONFIG_FILE"`
           make O=out "$CONFIG_NAME"
           
-          # 按照官方文档要求，为旧内核强制开启 Kprobes 及相关支持，关闭插件和 VDSO 冲突项
           sed -i 's/# CONFIG_KPROBES is not set/CONFIG_KPROBES=y/g' out/.config || true
           sed -i 's/# CONFIG_KRETPROBES is not set/CONFIG_KRETPROBES=y/g' out/.config || true
           sed -i 's/# CONFIG_HAVE_SYSCALL_TRACEPOINTS is not set/CONFIG_HAVE_SYSCALL_TRACEPOINTS=y/g' out/.config || true
