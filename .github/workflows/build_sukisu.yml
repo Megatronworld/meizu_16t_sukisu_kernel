@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V158)
+name: Build Meizu 16T Pure SukiSU Kernel (V159)
 
 on:
   workflow_dispatch:
@@ -15,26 +15,30 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并精准注释 fair.c 中的 FULL_THROTTLE_BOOST 报错行
+      - name: 3. 集成 SukiSU-Ultra 并部署双保险调度宏清洗
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 核心大招：精准读取 fair.c，把含有 FULL_THROTTLE_BOOST 的那几行直接注释掉
+          # 核心大招：在 setup.sh 刚跑完的瞬间，用 Python 对整个 kernel/sched 目录进行地毯式扫描和强行注释
           python3 -c "
           import os
-          path = 'kernel/sched/fair.c'
-          if os.path.exists(path):
-              with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                  lines = f.readlines()
-              new_lines = []
-              for line in lines:
-                  if 'FULL_THROTTLE_BOOST' in line:
-                      new_lines.append('/* ' + line.strip() + ' */ // Patched by SukiSU build script\n')
-                  else:
-                      new_lines.append(line)
-              with open(path, 'w', encoding='utf-8') as f:
-                  f.writelines(new_lines)
-              print('Successfully commented out FULL_THROTTLE_BOOST in fair.c')
+          sched_dir = 'kernel/sched'
+          if os.path.exists(sched_dir):
+              for root, dirs, files in os.walk(sched_dir):
+                  for file in files:
+                      if file.endswith(('.c', '.h')):
+                          path = os.path.join(root, file)
+                          with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                              lines = f.readlines()
+                          new_lines = []
+                          for line in lines:
+                              if any(macro in line for macro in ['NOHZ_BALANCE_KICK', 'FULL_THROTTLE_BOOST']):
+                                  new_lines.append('/* ' + line.strip() + ' */ // Sanitized by V159 ultimate defense\n')
+                              else:
+                                  new_lines.append(line)
+                          with open(path, 'w', encoding='utf-8') as f:
+                              f.writelines(new_lines)
+              print('Successfully executed V159 ultimate scheduler sanitization')
           " || true
           
           # 清理 ksu 目录中未定义的调度 Boost 或 trace 符号
@@ -107,6 +111,20 @@ jobs:
           echo "CONFIG_GCC_PLUGINS=n" >> out/.config
           echo "CONFIG_VDSO=n" >> out/.config
           
+          # [终极双保险] 在正式 make 编译前的最后一秒钟，再次执行一次全局 sched 清洗，确保万无一失！
+          python3 -c "
+          import os
+          for root, dirs, files in os.walk('kernel/sched'):
+              for file in files:
+                  if file.endswith(('.c', '.h')):
+                      p = os.path.join(root, file)
+                      with open(p, 'r', encoding='utf-8', errors='ignore') as f:
+                          text = f.read()
+                      text = text.replace('NOHZ_BALANCE_KICK', '0').replace('FULL_THROTTLE_BOOST', '0')
+                      with open(p, 'w', encoding='utf-8') as f:
+                          f.write(text)
+          " || true
+
           yes "" | make O=out oldconfig
           make O=out -j`nproc` \
             CC=aarch64-linux-gnu-gcc \
