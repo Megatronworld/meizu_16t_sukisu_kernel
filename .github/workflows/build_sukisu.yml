@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V151)
+name: Build Meizu 16T Pure SukiSU Kernel (V152)
 
 on:
   workflow_dispatch:
@@ -15,11 +15,14 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并清洗 ksu 目录中未定义的静态调度符号
+      - name: 3. 集成 SukiSU-Ultra 并在脚本结束后立刻执行调度硬还原
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 核心大招：在 kernel/ksu 源码中，把所有涉及未定义调度 Boost 或 trace 的函数调用直接置空
+          # 核心大招：官方脚本刚跑完，立刻用 git checkout 把 sched 目录彻底还原为纯净原厂状态，绝不含糊
+          git checkout kernel/sched/ || true
+          
+          # 清理 ksu 目录中未定义的调度 Boost 或 trace 符号
           python3 -c "
           import os, re
           ksu_dir = 'kernel/ksu'
@@ -30,17 +33,13 @@ jobs:
                           path = os.path.join(root, file)
                           with open(path, 'r', encoding='utf-8', errors='ignore') as f:
                               content = f.read()
-                          
-                          # 将未定义的内核/调度钩子调用替换为空操作
-                          content = re.sub(r'sched_boost\s*\([^)]*\);', '/* removed undefined sched_boost */', content)
-                          content = re.sub(r'trace_sched_.*?;', '/* removed undefined trace */', content)
-                          
+                          content = re.sub(r'sched_boost\s*\([^)]*\);', '/* removed */', content)
+                          content = re.sub(r'trace_sched_.*?;', '/* removed */', content)
                           with open(path, 'w', encoding='utf-8') as f:
                               f.write(content)
-              print('Successfully cleaned undefined symbols in kernel/ksu')
           " || true
           
-          # 修复并补齐中断宏
+          # 修复中断宏
           python3 -c "
           import os
           path = 'drivers/media/rc/msm-geni-ir.c'
