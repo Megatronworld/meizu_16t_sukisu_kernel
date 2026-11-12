@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V132)
+name: Build Meizu 16T Pure SukiSU Kernel (V133)
 
 on:
   workflow_dispatch:
@@ -15,14 +15,14 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 安全拉取 SukiSU 并物理清除所有高版本多余扩展模块
+      - name: 3. 安全拉取 SukiSU 并仅清理 SukiSU 内部冗余文件（保留原厂 rcu）
         run: |
+          git checkout kernel/rcu || true
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main || true
           
-          # 核心大招：物理抹除所有容易引起旧内核水土不服的非必要扩展和挂钩文件
-          rm -rf kernel/rcu 2>/dev/null || true
-          find kernel -name "*sched*" -delete 2>/dev/null || true
-          find kernel -name "*rctrack*" -delete 2>/dev/null || true
+          # 仅清理 SukiSU 源码树内部可能引发冲突的高版本调度扩展，不碰内核原厂目录
+          find kernel/ksu -name "*sched*" -delete 2>/dev/null || true
+          find kernel/ksu -name "*rctrack*" -delete 2>/dev/null || true
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
       - name: 4. 注入 VDSO 桩与清理状态
