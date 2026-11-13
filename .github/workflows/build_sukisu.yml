@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V161)
+name: Build Meizu 16T Pure SukiSU Kernel (V162)
 
 on:
   workflow_dispatch:
@@ -15,12 +15,31 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并在步骤结束时强制还原纯净调度
+      - name: 3. 集成 SukiSU-Ultra 并直接在全局调度头文件中强行补齐宏定义
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 核心大招：确保 setup.sh 运行结束后，立刻将 sched 目录恢复原厂，绝不留任何高版本污染
-          git checkout kernel/sched/ || true
+          # 核心大招：直接在旧内核的全局调度头文件 include/linux/sched.h 头部强行注入宏定义
+          # 这样无论 core.c 怎么被覆盖，只要包含此头文件，NOHZ_BALANCE_KICK 就会立刻拥有合法值！
+          python3 -c "
+          import os
+          path = 'include/linux/sched.h'
+          if os.path.exists(path):
+              with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                  content = f.read()
+              macro_patch = '''
+#ifndef NOHZ_BALANCE_KICK
+#define NOHZ_BALANCE_KICK 0
+#endif
+#ifndef FULL_THROTTLE_BOOST
+#define FULL_THROTTLE_BOOST 0
+#endif
+'''
+              content = macro_patch + content
+              with open(path, 'w', encoding='utf-8') as f:
+                  f.write(content)
+              print('Successfully injected global compatibility macros into include/linux/sched.h')
+          " || true
           
           # 清理 ksu 目录中未定义的符号
           python3 -c "
@@ -74,9 +93,6 @@ jobs:
 
       - name: 5. 编译内核并打包刷机包
         run: |
-          # [终极双保险] 在开始配置和编译前，再次强制 checkout sched 目录，彻底掐断任何二次污染源！
-          git checkout kernel/sched/ || true
-
           export ARCH=arm64
           export SUBARCH=arm64
           mkdir -p out
