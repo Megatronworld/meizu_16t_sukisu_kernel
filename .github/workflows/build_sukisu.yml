@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V163)
+name: Build Meizu 16T Pure SukiSU Kernel (V164)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并用单行安全脚本注入全局宏
+      - name: 3. 集成 SukiSU-Ultra 并注入全局调度兼容宏
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
@@ -44,18 +44,6 @@ jobs:
                           content = re.sub(r'trace_sched_.*?;', '/* removed */', content)
                           with open(p, 'w', encoding='utf-8') as f:
                               f.write(content)
-          " || true
-          
-          python3 -c "
-          import os
-          path = 'drivers/media/rc/msm-geni-ir.c'
-          if os.path.exists(path):
-              with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                  content = f.read()
-              if 'IRQ_TYPE_LEVEL_HIGH' not in content:
-                  content = '#ifndef IRQ_TYPE_LEVEL_HIGH\n#define IRQ_TYPE_LEVEL_HIGH 4\n#endif\n' + content
-              with open(path, 'w', encoding='utf-8') as f:
-                  f.write(content)
           " || true
           
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
@@ -99,13 +87,15 @@ jobs:
           echo "CONFIG_VDSO=n" >> out/.config
           
           yes "" | make O=out oldconfig
+          
+          # 核心大招：通过 KCFLAGS 全局注入 IRQ_TYPE_LEVEL_HIGH=4，彻底解决所有驱动中断宏报错
           make O=out -j`nproc` \
             CC=aarch64-linux-gnu-gcc \
             HOSTCC=gcc \
             HOSTCFLAGS="-std=gnu89 -fcommon" \
             HOSTLDFLAGS="-fcommon" \
             CROSS_COMPILE=aarch64-linux-gnu- \
-            KCFLAGS="-w -Wno-error" \
+            KCFLAGS="-w -Wno-error -DIRQ_TYPE_LEVEL_HIGH=4" \
             CONFIG_NO_ERROR_ON_MISMATCH=y
 
       - name: 6. 生成 AnyKernel3 刷机包并上传
