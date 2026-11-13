@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V164)
+name: Build Meizu 16T Pure SukiSU Kernel (V165)
 
 on:
   workflow_dispatch:
@@ -15,10 +15,11 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并注入全局调度兼容宏
+      - name: 3. 集成 SukiSU-Ultra 并补齐调度与 IRQ 兼容宏
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
+          # 3.1 注入调度兼容宏
           python3 -c "
           import os
           path = 'include/linux/sched.h'
@@ -28,6 +29,34 @@ jobs:
               p = '#ifndef NOHZ_BALANCE_KICK\n#define NOHZ_BALANCE_KICK 0\n#endif\n#ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif\n'
               with open(path, 'w', encoding='utf-8') as f:
                   f.write(p + c)
+          " || true
+
+          # 3.2 注入 IRQ 标志宏，彻底解决 include/linux/irq.h 报错
+          python3 -c "
+          import os
+          path = 'include/linux/irq.h'
+          if os.path.exists(path):
+              with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                  c = f.read()
+              irq_patch = '''
+#ifndef IRQ_NOPROBE
+#define IRQ_NOPROBE 0x00000010
+#endif
+#ifndef IRQ_NOAUTOEN
+#define IRQ_NOAUTOEN 0x02000000
+#endif
+#ifndef IRQ_WAKE_THREAD
+#define IRQ_WAKE_THREAD 0x01000000
+#endif
+#ifndef IRQ_PER_CPU
+#define IRQ_PER_CPU 0x00000200
+#endif
+#ifndef IRQ_NOOTHREAD
+#define IRQ_NOOTHREAD 0x04000000
+#endif
+'''
+              with open(path, 'w', encoding='utf-8') as f:
+                  f.write(irq_patch + c)
           " || true
           
           python3 -c "
@@ -87,8 +116,6 @@ jobs:
           echo "CONFIG_VDSO=n" >> out/.config
           
           yes "" | make O=out oldconfig
-          
-          # 核心大招：通过 KCFLAGS 全局注入 IRQ_TYPE_LEVEL_HIGH=4，彻底解决所有驱动中断宏报错
           make O=out -j`nproc` \
             CC=aarch64-linux-gnu-gcc \
             HOSTCC=gcc \
