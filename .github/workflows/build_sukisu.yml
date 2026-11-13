@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V160)
+name: Build Meizu 16T Pure SukiSU Kernel (V161)
 
 on:
   workflow_dispatch:
@@ -15,15 +15,14 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并彻底抹除所有非法的调度静态补丁
+      - name: 3. 集成 SukiSU-Ultra 并在步骤结束时强制还原纯净调度
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 核心大招：由于 SukiSU-Ultra 走的是动态 Kprobes 路线，旧内核完全不需要这些静态调度修改。
-          # 直接用 git checkout 把整个 kernel/sched 目录恢复为绝对纯净的原厂状态，彻底杜绝任何调度报错！
+          # 核心大招：确保 setup.sh 运行结束后，立刻将 sched 目录恢复原厂，绝不留任何高版本污染
           git checkout kernel/sched/ || true
           
-          # 清理 ksu 目录中可能未定义的调度 Boost 或 trace 符号
+          # 清理 ksu 目录中未定义的符号
           python3 -c "
           import os, re
           ksu_dir = 'kernel/ksu'
@@ -75,6 +74,9 @@ jobs:
 
       - name: 5. 编译内核并打包刷机包
         run: |
+          # [终极双保险] 在开始配置和编译前，再次强制 checkout sched 目录，彻底掐断任何二次污染源！
+          git checkout kernel/sched/ || true
+
           export ARCH=arm64
           export SUBARCH=arm64
           mkdir -p out
