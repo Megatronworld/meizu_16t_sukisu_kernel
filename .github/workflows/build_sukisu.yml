@@ -20,7 +20,6 @@ jobs:
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           git checkout include/linux/irq.h || true
           
-          # 3.1 注入调度兼容宏
           python3 -c "
           import os
           path = 'include/linux/sched.h'
@@ -30,7 +29,6 @@ jobs:
               with open(path, 'w', encoding='utf-8') as f: f.write(p + c)
           " || true
           
-          # 3.2 深度清洗 kernel/ksu 中所有高版本 IRQ 宏和调度 Boost 调用，防止旧内核编译报错
           python3 -c "
           import os, re
           ksu_dir = 'kernel/ksu'
