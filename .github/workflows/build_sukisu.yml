@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V173)
+name: Build Meizu 16T Pure SukiSU Kernel (V174)
 
 on:
   workflow_dispatch:
@@ -15,28 +15,19 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并全局加固 task_struct 前置声明与兼容宏
+      - name: 3. 集成 SukiSU-Ultra 并强制全局注入 task_struct 完整声明
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 3.1 在 sched.h 顶部全局强制声明 struct task_struct，彻底消灭未定义报错
+          # 3.1 在 sched.h 顶部全局强制声明 struct task_struct
           python3 -c "import os; p='include/linux/sched.h'; open(p, 'w', encoding='utf-8').write('struct task_struct;\n#ifndef NOHZ_BALANCE_KICK\n#define NOHZ_BALANCE_KICK 0\n#endif\n#ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif\n' + open(p, 'r', encoding='utf-8', errors='ignore').read()) if os.path.exists(p) else None" || true
           
           python3 -c "import os; p='include/linux/irq.h'; open(p, 'w', encoding='utf-8').write(open(p, 'r', encoding='utf-8', errors='ignore').read() + '\n#ifndef IRQ_NOPROBE\n#define IRQ_NOPROBE 16\n#endif\n#ifndef IRQ_NOAUTOEN\n#define IRQ_NOAUTOEN 33554432\n#endif\n#ifndef IRQ_WAKE_THREAD\n#define IRQ_WAKE_THREAD 16777216\n#endif\n#ifndef IRQ_PER_CPU\n#define IRQ_PER_CPU 512\n#endif\n#ifndef IRQ_NOOTHREAD\n#define IRQ_NOOTHREAD 67108864\n#endif\n#ifndef IRQ_PER_CPU_DEVID\n#define IRQ_PER_CPU_DEVID 1024\n#endif\n') if os.path.exists(p) else None" || true
           python3 -c "import os; p='arch/arm64/kernel/asm-offsets.c'; open(p, 'w', encoding='utf-8').write('#include <linux/sched.h>\n' + open(p, 'r', encoding='utf-8', errors='ignore').read()) if os.path.exists(p) else None" || true
           python3 -c "import os; p='kernel/fork.c'; open(p, 'w', encoding='utf-8').write('#include <linux/sched/task.h>\n#ifndef CLONE_VM\n#define CLONE_VM 0x100\n#endif\n#ifndef CLONE_FS\n#define CLONE_FS 0x200\n#endif\n#ifndef CLONE_FILES\n#define CLONE_FILES 0x400\n#endif\n#ifndef CLONE_SIGHAND\n#define CLONE_SIGHAND 0x800\n#endif\n#ifndef CLONE_NEWNS\n#define CLONE_NEWNS 0x20000\n#endif\n#ifndef CLONE_SYSVSEM\n#define CLONE_SYSVSEM 0x40000\n#endif\n' + open(p, 'r', encoding='utf-8', errors='ignore').read()) if os.path.exists(p) else None" || true
           
-          python3 -c "import os, re; [open(os.path.join(r,f), 'w', encoding='utf-8').write(re.sub(r'trace_sched_.*?;', '/* removed */', re.sub(r'sched_boost\s*\([^)]*\);', '/* removed */', open(os.path.join(r,f), 'r', encoding='utf-8', errors='ignore').read()))) for r,ds,fs in os.walk('kernel/ksu') for f in fs if f.endswith(('.c','.h'))] if os.path.exists('kernel/ksu') else None" || true
-          find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
-
-      - name: 4. 注入 VDSO 桩与清理状态
-        run: |
-          git checkout Makefile arch/arm64/Makefile arch/arm64/kernel/signal.c || true
-          python3 -c "import os; p='arch/arm64/Makefile'; open(p, 'w', encoding='utf-8').writelines([('# ' + l) if 'vdso_prepare' in l else l for l in open(p, 'r', encoding='utf-8').readlines()]) if os.path.exists(p) else None" || true
-          mkdir -p include/generated arch/arm64/include/generated
-          printf "#ifndef __VDSO_OFFSETS_H\n#define __VDSO_OFFSETS_H\n#define vdso_offset_sigtramp 0\n#define vdso_offset_rt_sigtramp 0\n#endif\n" > include/generated/vdso-offsets.h
-          cp include/generated/vdso-offsets.h arch/arm64/include/generated/vdso-offsets.h || true
-          printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
+          
+cat << 'EOF' >> .github/workflows/build_sukisu.yml
 
       - name: 5. 编译内核并打包刷机包
         run: |
