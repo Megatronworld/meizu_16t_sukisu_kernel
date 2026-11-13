@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V179)
+name: Build Meizu 16T Pure SukiSU Kernel (V180)
 
 on:
   workflow_dispatch:
@@ -51,6 +51,18 @@ jobs:
           echo "CONFIG_VDSO=n" >> out/.config
           
           yes "" | make O=out oldconfig
+          
+          # 关键修复：提前执行 prepare 阶段以生成 asm-offsets.h 等内核必需的架构头文件
+          make O=out -j`nproc` \
+            CC=aarch64-linux-gnu-gcc \
+            HOSTCC=gcc \
+            HOSTCFLAGS="-std=gnu89 -fcommon" \
+            HOSTLDFLAGS="-fcommon" \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            KCFLAGS="-w -Wno-error -include linux/sched.h -DIRQ_TYPE_LEVEL_HIGH=4 -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000" \
+            prepare
+            
+          # 正式全速编译内核镜像
           make O=out -j`nproc` \
             CC=aarch64-linux-gnu-gcc \
             HOSTCC=gcc \
