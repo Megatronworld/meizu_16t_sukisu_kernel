@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V166)
+name: Build Meizu 16T Pure SukiSU Kernel (V167)
 
 on:
   workflow_dispatch:
@@ -15,10 +15,10 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并用单行脚本安全注入所有兼容宏
+      - name: 3. 集成 SukiSU-Ultra 并清洗高版本中断与调度冲突
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
-          
+          git checkout include/linux/irq.h || true
           python3 -c "
           import os
           path = 'include/linux/sched.h'
@@ -27,16 +27,6 @@ jobs:
               p = '#ifndef NOHZ_BALANCE_KICK\n#define NOHZ_BALANCE_KICK 0\n#endif\n#ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif\n'
               with open(path, 'w', encoding='utf-8') as f: f.write(p + c)
           " || true
-          
-          python3 -c "
-          import os
-          path = 'include/linux/irq.h'
-          if os.path.exists(path):
-              with open(path, 'r', encoding='utf-8', errors='ignore') as f: c = f.read()
-              irq_patch = '#ifndef IRQ_NOPROBE\n#define IRQ_NOPROBE 0x10\n#endif\n#ifndef IRQ_NOAUTOEN\n#define IRQ_NOAUTOEN 0x02000000\n#endif\n#ifndef IRQ_WAKE_THREAD\n#define IRQ_WAKE_THREAD 0x01000000\n#endif\n#ifndef IRQ_PER_CPU\n#define IRQ_PER_CPU 0x200\n#endif\n#ifndef IRQ_NOOTHREAD\n#define IRQ_NOOTHREAD 0x04000000\n#endif\n'
-              with open(path, 'w', encoding='utf-8') as f: f.write(irq_patch + c)
-          " || true
-          
           python3 -c "
           import os, re
           ksu_dir = 'kernel/ksu'
@@ -50,7 +40,6 @@ jobs:
                           content = re.sub(r'trace_sched_.*?;', '/* removed */', content)
                           with open(p, 'w', encoding='utf-8') as f: f.write(content)
           " || true
-          
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
       - name: 4. 注入 VDSO 桩与清理状态
