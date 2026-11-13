@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V168)
+name: Build Meizu 16T Pure SukiSU Kernel (V169)
 
 on:
   workflow_dispatch:
@@ -15,11 +15,11 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并精准清洗内核中的中断与调度符号
+      - name: 3. 集ernation SukiSU-Ultra 并完美兼容旧内核的中断与调度宏
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
-          git checkout include/linux/irq.h || true
           
+          # 3.1 注入调度兼容宏
           python3 -c "
           import os
           path = 'include/linux/sched.h'
@@ -29,6 +29,39 @@ jobs:
               with open(path, 'w', encoding='utf-8') as f: f.write(p + c)
           " || true
           
+          # 3.2 在 include/linux/irq.h 末尾安全追加所有高版本中断标志宏，绝对不影响原有枚举
+          python3 -c "
+          import os
+          path = 'include/linux/irq.h'
+          if os.path.exists(path):
+              with open(path, 'r', encoding='utf-8', errors='ignore') as f: c = f.read()
+              irq_append = '''
+#ifndef IRQ_NOPROBE
+#define IRQ_NOPROBE (1 << 4)
+#endif
+#ifndef IRQ_NOAUTOEN
+#define IRQ_NOAUTOEN (1 << 25)
+#endif
+#ifndef IRQ_WAKE_THREAD
+#define IRQ_WAKE_THREAD (1 << 24)
+#endif
+#ifndef IRQ_PER_CPU
+#define IRQ_PER_CPU (1 << 9)
+#endif
+#ifndef IRQ_NOOTHREAD
+#define IRQ_NOOTHREAD (1 << 26)
+#endif
+#ifndef IRQ_PER_CPU_DEVID
+#define IRQ_PER_CPU_DEVID (1 << 10)
+#endif
+#ifndef IRQ_LEVEL
+#define IRQ_LEVEL (1 << 11)
+#endif
+'''
+              with open(path, 'w', encoding='utf-8') as f: f.write(c + irq_append)
+          " || true
+          
+          # 3.3 清理 ksu 目录中未定义的追踪符号
           python3 -c "
           import os, re
           ksu_dir = 'kernel/ksu'
@@ -40,12 +73,6 @@ jobs:
                           with open(p, 'r', encoding='utf-8', errors='ignore') as f: content = f.read()
                           content = re.sub(r'sched_boost\s*\([^)]*\);', '/* removed */', content)
                           content = re.sub(r'trace_sched_.*?;', '/* removed */', content)
-                          content = re.sub(r'\bIRQ_NOPROBE\b', '0', content)
-                          content = re.sub(r'\bIRQ_NOAUTOEN\b', '0', content)
-                          content = re.sub(r'\bIRQ_WAKE_THREAD\b', '0', content)
-                          content = re.sub(r'\bIRQ_PER_CPU\b', '0', content)
-                          content = re.sub(r'\bIRQ_NOOTHREAD\b', '0', content)
-                          content = re.sub(r'\bIRQ_PER_CPU_DEVID\b', '0', content)
                           with open(p, 'w', encoding='utf-8') as f: f.write(content)
           " || true
           
@@ -79,7 +106,7 @@ jobs:
           sed -i 's/# CONFIG_KPROBES is not set/CONFIG_KPROBES=y/g' out/.config || true
           sed -i 's/# CONFIG_KRETPROBES is not set/CONFIG_KRETPROBES=y/g' out/.config || true
           sed -i 's/# CONFIG_HAVE_SYSCALL_TRACEPOINTS is not set/CONFIG_HAVE_SYSCALL_TRACEPOINTS=y/g' out/.config || true
-          sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS=y/g' out/.config || true
+          sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS=n/g' out/.config || true
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO=n/g' out/.config || true
           echo "CONFIG_KPROBES=y" >> out/.config
           echo "CONFIG_KRETPROBES=y" >> out/.config
