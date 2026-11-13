@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V165)
+name: Build Meizu 16T Pure SukiSU Kernel (V166)
 
 on:
   workflow_dispatch:
@@ -15,48 +15,26 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并补齐调度与 IRQ 兼容宏
+      - name: 3. 集成 SukiSU-Ultra 并用单行脚本安全注入所有兼容宏
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 3.1 注入调度兼容宏
           python3 -c "
           import os
           path = 'include/linux/sched.h'
           if os.path.exists(path):
-              with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                  c = f.read()
+              with open(path, 'r', encoding='utf-8', errors='ignore') as f: c = f.read()
               p = '#ifndef NOHZ_BALANCE_KICK\n#define NOHZ_BALANCE_KICK 0\n#endif\n#ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif\n'
-              with open(path, 'w', encoding='utf-8') as f:
-                  f.write(p + c)
+              with open(path, 'w', encoding='utf-8') as f: f.write(p + c)
           " || true
-
-          # 3.2 注入 IRQ 标志宏，彻底解决 include/linux/irq.h 报错
+          
           python3 -c "
           import os
           path = 'include/linux/irq.h'
           if os.path.exists(path):
-              with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                  c = f.read()
-              irq_patch = '''
-#ifndef IRQ_NOPROBE
-#define IRQ_NOPROBE 0x00000010
-#endif
-#ifndef IRQ_NOAUTOEN
-#define IRQ_NOAUTOEN 0x02000000
-#endif
-#ifndef IRQ_WAKE_THREAD
-#define IRQ_WAKE_THREAD 0x01000000
-#endif
-#ifndef IRQ_PER_CPU
-#define IRQ_PER_CPU 0x00000200
-#endif
-#ifndef IRQ_NOOTHREAD
-#define IRQ_NOOTHREAD 0x04000000
-#endif
-'''
-              with open(path, 'w', encoding='utf-8') as f:
-                  f.write(irq_patch + c)
+              with open(path, 'r', encoding='utf-8', errors='ignore') as f: c = f.read()
+              irq_patch = '#ifndef IRQ_NOPROBE\n#define IRQ_NOPROBE 0x10\n#endif\n#ifndef IRQ_NOAUTOEN\n#define IRQ_NOAUTOEN 0x02000000\n#endif\n#ifndef IRQ_WAKE_THREAD\n#define IRQ_WAKE_THREAD 0x01000000\n#endif\n#ifndef IRQ_PER_CPU\n#define IRQ_PER_CPU 0x200\n#endif\n#ifndef IRQ_NOOTHREAD\n#define IRQ_NOOTHREAD 0x04000000\n#endif\n'
+              with open(path, 'w', encoding='utf-8') as f: f.write(irq_patch + c)
           " || true
           
           python3 -c "
@@ -67,12 +45,10 @@ jobs:
                   for file in files:
                       if file.endswith(('.c', '.h')):
                           p = os.path.join(root, file)
-                          with open(p, 'r', encoding='utf-8', errors='ignore') as f:
-                              content = f.read()
+                          with open(p, 'r', encoding='utf-8', errors='ignore') as f: content = f.read()
                           content = re.sub(r'sched_boost\s*\([^)]*\);', '/* removed */', content)
                           content = re.sub(r'trace_sched_.*?;', '/* removed */', content)
-                          with open(p, 'w', encoding='utf-8') as f:
-                              f.write(content)
+                          with open(p, 'w', encoding='utf-8') as f: f.write(content)
           " || true
           
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
@@ -84,11 +60,9 @@ jobs:
           import os
           path = 'arch/arm64/Makefile'
           if os.path.exists(path):
-              with open(path, 'r', encoding='utf-8') as f:
-                  lines = f.readlines()
+              with open(path, 'r', encoding='utf-8') as f: lines = f.readlines()
               new_lines = [('# ' + line) if 'vdso_prepare' in line else line for line in lines]
-              with open(path, 'w', encoding='utf-8') as f:
-                  f.writelines(new_lines)
+              with open(path, 'w', encoding='utf-8') as f: f.writelines(new_lines)
           " || true
           mkdir -p include/generated arch/arm64/include/generated
           printf "#ifndef __VDSO_OFFSETS_H\n#define __VDSO_OFFSETS_H\n#define vdso_offset_sigtramp 0\n#define vdso_offset_rt_sigtramp 0\n#endif\n" > include/generated/vdso-offsets.h
