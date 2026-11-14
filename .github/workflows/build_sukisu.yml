@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V192)
+name: Build Meizu 16T Pure SukiSU Kernel (V193)
 
 on:
   workflow_dispatch:
@@ -58,14 +58,14 @@ jobs:
           # 生成基础头文件
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- prepare0
           
-          # 正式全速编译内核镜像（通过 KCFLAGS 全局强制注入全套中断兼容宏）
+          # 正式全速编译内核镜像（精简 KCFLAGS，剔除所有可能污染汇编的数值宏）
           make O=out -j`nproc` \
             CC=aarch64-linux-gnu-gcc \
             HOSTCC=gcc \
             HOSTCFLAGS="-std=gnu89 -fcommon" \
             HOSTLDFLAGS="-fcommon" \
             CROSS_COMPILE=aarch64-linux-gnu- \
-            KCFLAGS="-w -Wno-error -include linux/sched.h -DIRQ_TYPE_LEVEL_HIGH=4 -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000 -DIRQ_PER_CPU=512 -DIRQ_NOPROBE=16 -DIRQ_NOAUTOEN=33554432 -DIRQ_WAKE_THREAD=16777216 -DIRQ_NESTED_THREAD=32768 -DIRQ_NOOTHREAD=67108864 -DIRQ_PER_CPU_DEVID=1024 -DIRQ_NO_BALANCING=8192" \
+            KCFLAGS="-w -Wno-error -include linux/sched.h -DIRQ_TYPE_LEVEL_HIGH=4 -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000" \
             CONFIG_NO_ERROR_ON_MISMATCH=y
 
       - name: 6. 生成 AnyKernel3 刷机包并上传
