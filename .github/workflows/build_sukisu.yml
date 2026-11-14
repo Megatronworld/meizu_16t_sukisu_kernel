@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V191)
+name: Build Meizu 16T Pure SukiSU Kernel (V192)
 
 on:
   workflow_dispatch:
@@ -15,44 +15,9 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并安全追加内核核心中断兼容宏
+      - name: 3. 集成 SukiSU-Ultra 并清理调度符号
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
-          
-          # 在 include/linux/irq.h 末尾直接安全追加所有缺失的中断兼容宏
-          python3 -c "
-          path = 'include/linux/irq.h'
-          if os.path.exists(path):
-              content = open(path, 'r', encoding='utf-8', errors='ignore').read()
-              addon = '''
-              #ifndef IRQ_PER_CPU
-              #define IRQ_PER_CPU 512
-              #endif
-              #ifndef IRQ_NOPROBE
-              #define IRQ_NOPROBE 16
-              #endif
-              #ifndef IRQ_NOAUTOEN
-              #define IRQ_NOAUTOEN 33554432
-              #endif
-              #ifndef IRQ_WAKE_THREAD
-              #define IRQ_WAKE_THREAD 16777216
-              #endif
-              #ifndef IRQ_NESTED_THREAD
-              #define IRQ_NESTED_THREAD 32768
-              #endif
-              #ifndef IRQ_NOOTHREAD
-              #define IRQ_NOOTHREAD 67108864
-              #endif
-              #ifndef IRQ_PER_CPU_DEVID
-              #define IRQ_PER_CPU_DEVID 1024
-              #endif
-              #ifndef IRQ_NO_BALANCING
-              #define IRQ_NO_BALANCING 8192
-              #endif
-              '''
-              open(path, 'w', encoding='utf-8').write(content + addon)
-          " || true
-          
           python3 -c "import os, re; [open(os.path.join(r,f), 'w', encoding='utf-8').write(re.sub(r'trace_sched_.*?;', '/* removed */', re.sub(r'sched_boost\s*\([^)]*\);', '/* removed */', open(os.path.join(r,f), 'r', encoding='utf-8', errors='ignore').read()))) for r,ds,fs in os.walk('kernel/ksu') for f in fs if f.endswith(('.c','.h'))] if os.path.exists('kernel/ksu') else None" || true
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
@@ -93,14 +58,14 @@ jobs:
           # 生成基础头文件
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- prepare0
           
-          # 正式全速编译内核镜像
+          # 正式全速编译内核镜像（通过 KCFLAGS 全局强制注入全套中断兼容宏）
           make O=out -j`nproc` \
             CC=aarch64-linux-gnu-gcc \
             HOSTCC=gcc \
             HOSTCFLAGS="-std=gnu89 -fcommon" \
             HOSTLDFLAGS="-fcommon" \
             CROSS_COMPILE=aarch64-linux-gnu- \
-            KCFLAGS="-w -Wno-error -include linux/sched.h -DIRQ_TYPE_LEVEL_HIGH=4 -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000" \
+            KCFLAGS="-w -Wno-error -include linux/sched.h -DIRQ_TYPE_LEVEL_HIGH=4 -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000 -DIRQ_PER_CPU=512 -DIRQ_NOPROBE=16 -DIRQ_NOAUTOEN=33554432 -DIRQ_WAKE_THREAD=16777216 -DIRQ_NESTED_THREAD=32768 -DIRQ_NOOTHREAD=67108864 -DIRQ_PER_CPU_DEVID=1024 -DIRQ_NO_BALANCING=8192" \
             CONFIG_NO_ERROR_ON_MISMATCH=y
 
       - name: 6. 生成 AnyKernel3 刷机包并上传
