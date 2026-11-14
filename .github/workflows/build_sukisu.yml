@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V183)
+name: Build Meizu 16T Pure SukiSU Kernel (V184)
 
 on:
   workflow_dispatch:
@@ -55,17 +55,17 @@ jobs:
           # 修复主机 dtc 符号重定义
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l || true
           
-          # 关键修复：显式执行 prepare0，强制在最前面生成 asm-offsets.h 和 bounds.h
+          # 生成基础头文件
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- prepare0
           
-          # 正式全速编译内核镜像
+          # 正式全速编译内核镜像（全局注入所有缺失的 IRQ 和 CLONE 宏防线）
           make O=out -j`nproc` \
             CC=aarch64-linux-gnu-gcc \
             HOSTCC=gcc \
             HOSTCFLAGS="-std=gnu89 -fcommon" \
             HOSTLDFLAGS="-fcommon" \
             CROSS_COMPILE=aarch64-linux-gnu- \
-            KCFLAGS="-w -Wno-error -include linux/sched.h -DIRQ_TYPE_LEVEL_HIGH=4 -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000" \
+            KCFLAGS="-w -Wno-error -include linux/sched.h -DIRQ_TYPE_LEVEL_HIGH=4 -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000 -DIRQ_PER_CPU=512 -DIRQ_NOPROBE=16 -DIRQ_NOAUTOEN=33554432 -DIRQ_WAKE_THREAD=16777216 -DIRQ_NESTED_THREAD=32768 -DIRQ_NOOTHREAD=67108864 -DIRQ_PER_CPU_DEVID=1024" \
             CONFIG_NO_ERROR_ON_MISMATCH=y
 
       - name: 6. 生成 AnyKernel3 刷机包并上传
