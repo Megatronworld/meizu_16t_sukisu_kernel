@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V181)
+name: Build Meizu 16T Pure SukiSU Kernel (V182)
 
 on:
   workflow_dispatch:
@@ -51,8 +51,13 @@ jobs:
           echo "CONFIG_VDSO=n" >> out/.config
           
           yes "" | make O=out oldconfig
-          make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc CROSS_COMPILE=aarch64-linux-gnu- scripts
-          make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc CROSS_COMPILE=aarch64-linux-gnu- archprepare
+          
+          # 关键修复：在编译 dtc 之前，通过 sed 将 yylloc 改为 extern，彻底解决高版本 gcc/flex 符号重定义报错
+          sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l || true
+          sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c 2>/dev/null || true
+          
+          make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- scripts
+          make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- archprepare
           
           make O=out -j`nproc` \
             CC=aarch64-linux-gnu-gcc \
