@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V182)
+name: Build Meizu 16T Pure SukiSU Kernel (V183)
 
 on:
   workflow_dispatch:
@@ -52,13 +52,13 @@ jobs:
           
           yes "" | make O=out oldconfig
           
-          # 关键修复：在编译 dtc 之前，通过 sed 将 yylloc 改为 extern，彻底解决高版本 gcc/flex 符号重定义报错
+          # 修复主机 dtc 符号重定义
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l || true
-          sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.lex.c 2>/dev/null || true
           
-          make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- scripts
-          make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- archprepare
+          # 关键修复：显式执行 prepare0，强制在最前面生成 asm-offsets.h 和 bounds.h
+          make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- prepare0
           
+          # 正式全速编译内核镜像
           make O=out -j`nproc` \
             CC=aarch64-linux-gnu-gcc \
             HOSTCC=gcc \
