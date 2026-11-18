@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V208)
+name: Build Meizu 16T Pure SukiSU Kernel (V209)
 
 on:
   workflow_dispatch:
@@ -15,10 +15,11 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并完善兼容头文件 sukisu_compat.h
+      - name: 3. 集成 SukiSU-Ultra 并完善全局 sukisu_compat.h
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
+          # 完善全局兼容头文件，包含所有中断、调度及桩对齐宏
           cat << 'COMPAT' > include/linux/sukisu_compat.h
           #ifndef _SUKISU_COMPAT_H
           #define _SUKISU_COMPAT_H
@@ -50,21 +51,14 @@ jobs:
           #ifndef NOHZ_BALANCE_KICK
           #define NOHZ_BALANCE_KICK 2
           #endif
+          #ifndef EFI_HAVE_STUB
+          #define EFI_HAVE_STUB 1
+          #endif
 
           #endif
           COMPAT
 
-          python3 -c "
-          import os
-          for r, ds, fs in os.walk('kernel/ksu'):
-              for f in fs:
-                  if f.endswith('.c'):
-                      fp = os.path.join(r, f)
-                      txt = open(fp, 'r', encoding='utf-8', errors='ignore').read()
-                      if 'sukisu_compat.h' not in txt:
-                          open(fp, 'w', encoding='utf-8').write('#include <linux/sukisu_compat.h>\n' + txt)
-          " || true
-
+          # 针对旧内核 mm/huge_memory.c 中的 try_to_unmap 调用进行安全适配
           python3 -c "
           import os
           path = 'mm/huge_memory.c'
@@ -91,8 +85,6 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           mkdir -p out
-          
-          # 智能搜寻并选择最合适的 defconfig 文件
           CONFIG_FILE=`find arch/arm64/configs -name "*meizu*" -o -name "*sdm855*" -o -name "*sm8150*" -o -name "*defconfig" | head -n 1`
           echo "Using config file: $CONFIG_FILE"
           CONFIG_NAME=`basename "$CONFIG_FILE"`
@@ -116,7 +108,7 @@ jobs:
           
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- prepare0
 
-      - name: 6. 正式全速编译内核镜像
+      - name: 6. 正式全速编译内核镜像（通过 KCFLAGS 全局挂载兼容头文件）
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -126,7 +118,7 @@ jobs:
             HOSTCFLAGS="-std=gnu89 -fcommon" \
             HOSTLDFLAGS="-fcommon" \
             CROSS_COMPILE=aarch64-linux-gnu- \
-            KCFLAGS="-w -Wno-error -include linux/sched.h -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000" \
+            KCFLAGS="-w -Wno-error -include linux/sched.h -include linux/sukisu_compat.h -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000" \
             CONFIG_NO_ERROR_ON_MISMATCH=y
 
       - name: 7. 生成 AnyKernel3 刷机包并上传
