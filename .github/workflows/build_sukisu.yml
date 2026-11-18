@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V206)
+name: Build Meizu 16T Pure SukiSU Kernel (V207)
 
 on:
   workflow_dispatch:
@@ -15,11 +15,11 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并创建隔离的兼容头文件
+      - name: 3. 集成 SukiSU-Ultra 并完善兼容头文件 sukisu_compat.h
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 创建专属于 SukiSU 的兼容头文件
+          # 在 sukisu_compat.h 中补齐 NOHZ_BALANCE_KICK 及其他调度缺失宏
           cat << 'COMPAT' > include/linux/sukisu_compat.h
           #ifndef _SUKISU_COMPAT_H
           #define _SUKISU_COMPAT_H
@@ -48,11 +48,14 @@ jobs:
           #ifndef IRQ_NO_BALANCING
           #define IRQ_NO_BALANCING 8192
           #endif
+          #ifndef NOHZ_BALANCE_KICK
+          #define NOHZ_BALANCE_KICK 2
+          #endif
 
           #endif
           COMPAT
 
-          # 自动将 sukisu_compat.h 注入到 kernel/ksu 下所有 C 文件顶部，绝对不污染内核核心汇编
+          # 自动将 sukisu_compat.h 注入到 kernel/ksu 下所有 C 文件顶部
           python3 -c "
           import os
           for r, ds, fs in os.walk('kernel/ksu'):
@@ -113,7 +116,7 @@ jobs:
           
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- prepare0
 
-      - name: 6. 正式全速编译内核镜像（完全剥离全局 include，保持绝对纯净）
+      - name: 6. 正式全速编译内核镜像
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
