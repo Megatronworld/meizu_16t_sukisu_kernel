@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V202)
+name: Build Meizu 16T Pure SukiSU Kernel (V203)
 
 on:
   workflow_dispatch:
@@ -15,34 +15,43 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集end Sukisu 并适配旧内核内存与中断宏
+      - name: 3. 集成 SukiSU-Ultra 并精准在 irqdesc.h 头部植入中断宏
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 在 irq.h 头部补齐中断宏映射
+          # 直接在 include/linux/irqdesc.h 的最顶端安全注入所有缺失的中断宏
           python3 -c "
           import os
-          path = 'include/linux/irq.h'
+          path = 'include/linux/irqdesc.h'
           if os.path.exists(path):
               content = open(path, 'r', encoding='utf-8', errors='ignore').read()
-              safe_mapping = '''
+              compat_macros = '''
+              #ifndef IRQ_PER_CPU
+              #define IRQ_PER_CPU 512
+              #endif
+              #ifndef IRQ_NOPROBE
+              #define IRQ_NOPROBE 16
+              #endif
+              #ifndef IRQ_NOAUTOEN
+              #define IRQ_NOAUTOEN 33554432
+              #endif
               #ifndef IRQ_WAKE_THREAD
-              #define IRQ_WAKE_THREAD 0
+              #define IRQ_WAKE_THREAD 16777216
               #endif
               #ifndef IRQ_NESTED_THREAD
-              #define IRQ_NESTED_THREAD 0
+              #define IRQ_NESTED_THREAD 32768
               #endif
               #ifndef IRQ_NOOTHREAD
-              #define IRQ_NOOTHREAD 0
+              #define IRQ_NOOTHREAD 67108864
               #endif
               #ifndef IRQ_PER_CPU_DEVID
-              #define IRQ_PER_CPU_DEVID 0
+              #define IRQ_PER_CPU_DEVID 1024
               #endif
               #ifndef IRQ_NO_BALANCING
-              #define IRQ_NO_BALANCING 0
+              #define IRQ_NO_BALANCING 8192
               #endif
               '''
-              open(path, 'w', encoding='utf-8').write(safe_mapping + '\n' + content)
+              open(path, 'w', encoding='utf-8').write(compat_macros + '\n' + content)
           " || true
 
           # 针对旧内核 mm/huge_memory.c 中的 try_to_unmap 调用进行安全适配
@@ -51,7 +60,6 @@ jobs:
           path = 'mm/huge_memory.c'
           if os.path.exists(path):
               content = open(path, 'r', encoding='utf-8', errors='ignore').read()
-              # 如果检测到 try_to_unmap 调用，进行版本兼容重写或注释处理
               content = content.replace('try_to_unmap(page, ttu_flags);', 'try_to_unmap(page, (enum ttu_flags)ttu_flags);')
               open(path, 'w', encoding='utf-8').write(content)
           " || true
