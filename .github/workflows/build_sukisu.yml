@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V195)
+name: Build Meizu 16T Pure SukiSU Kernel (V196)
 
 on:
   workflow_dispatch:
@@ -15,13 +15,14 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并直接在 irqdesc.h 顶端注入中断兼容宏
+      - name: 3. 集成 SukiSU-Ultra 并精准锚定 irq.h 头部注入中断宏
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 直接在 include/linux/irqdesc.h 的最顶端注入所有缺失的高版本中断宏
+          # 通过 Python 精准找到 include/linux/irq.h 的头文件保护符下方，安全插入兼容宏
           python3 -c "
-          path = 'include/linux/irqdesc.h'
+          import re
+          path = 'include/linux/irq.h'
           if os.path.exists(path):
               content = open(path, 'r', encoding='utf-8', errors='ignore').read()
               compat_macros = '''
@@ -53,7 +54,11 @@ jobs:
               #define IRQ_NOPROBE_SET 0
               #endif
               '''
-              open(path, 'w', encoding='utf-8').write(compat_macros + '\n' + content)
+              # 尝试在 #define _LINUX_IRQ_H 之后插入
+              new_content, count = re.subn(r'(#define\s+_LINUX_IRQ_H[^\n]*)', r'\1\n' + compat_macros, content)
+              if count == 0:
+                  new_content = compat_macros + '\n' + content
+              open(path, 'w', encoding='utf-8').write(new_content)
           " || true
           
           python3 -c "import os, re; [open(os.path.join(r,f), 'w', encoding='utf-8').write(re.sub(r'trace_sched_.*?;', '/* removed */', re.sub(r'sched_boost\s*\([^)]*\);', '/* removed */', open(os.path.join(r,f), 'r', encoding='utf-8', errors='ignore').read()))) for r,ds,fs in os.walk('kernel/ksu') for f in fs if f.endswith(('.c','.h'))] if os.path.exists('kernel/ksu') else None" || true
