@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V194)
+name: Build Meizu 16T Pure SukiSU Kernel (V195)
 
 on:
   workflow_dispatch:
@@ -15,13 +15,13 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并直接在 irq.h 顶端注入兼容宏
+      - name: 3. 集成 SukiSU-Ultra 并直接在 irqdesc.h 顶端注入中断兼容宏
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 在 include/linux/irq.h 的最顶端安全注入所有高版本中断宏
+          # 直接在 include/linux/irqdesc.h 的最顶端注入所有缺失的高版本中断宏
           python3 -c "
-          path = 'include/linux/irq.h'
+          path = 'include/linux/irqdesc.h'
           if os.path.exists(path):
               content = open(path, 'r', encoding='utf-8', errors='ignore').read()
               compat_macros = '''
