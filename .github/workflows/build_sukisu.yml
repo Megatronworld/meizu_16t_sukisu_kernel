@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V204)
+name: Build Meizu 16T Pure SukiSU Kernel (V205)
 
 on:
   workflow_dispatch:
@@ -15,14 +15,15 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并全面完善 irq 与 irqdesc 兼容宏
+      - name: 3. 集成 SukiSU-Ultra 并创建全局兼容头文件 sukisu_compat.h
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 在 include/linux/irq.h 和 irqdesc.h 顶端统一安全注入所有中断与类型兼容宏
-          python3 -c "
-          import os
-          macros = '''
+          # 创建专用的全局中断宏兼容头文件，避开所有 enum 冲突
+          cat << 'COMPAT' > include/linux/sukisu_compat.h
+          #ifndef _SUKISU_COMPAT_H
+          #define _SUKISU_COMPAT_H
+
           #ifndef IRQ_PER_CPU
           #define IRQ_PER_CPU 512
           #endif
@@ -47,15 +48,9 @@ jobs:
           #ifndef IRQ_NO_BALANCING
           #define IRQ_NO_BALANCING 8192
           #endif
-          #ifndef IRQ_TYPE_LEVEL_HIGH
-          #define IRQ_TYPE_LEVEL_HIGH 4
+
           #endif
-          '''
-          for p in ['include/linux/irq.h', 'include/linux/irqdesc.h']:
-              if os.path.exists(p):
-                  content = open(p, 'r', encoding='utf-8', errors='ignore').read()
-                  open(p, 'w', encoding='utf-8').write(macros + '\n' + content)
-          " || true
+          COMPAT
 
           # 针对旧内核 mm/huge_memory.c 中的 try_to_unmap 调用进行安全适配
           python3 -c "
@@ -106,7 +101,7 @@ jobs:
           
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- prepare0
 
-      - name: 6. 正式全速编译内核镜像（剔除冲突宏，保持 KCFLAGS 绝对纯净）
+      - name: 6. 正式全速编译内核镜像（通过 KCFLAGS 强制全局预包含兼容头文件）
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -116,7 +111,7 @@ jobs:
             HOSTCFLAGS="-std=gnu89 -fcommon" \
             HOSTLDFLAGS="-fcommon" \
             CROSS_COMPILE=aarch64-linux-gnu- \
-            KCFLAGS="-w -Wno-error -include linux/sched.h -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000" \
+            KCFLAGS="-w -Wno-error -include linux/sched.h -include linux/sukisu_compat.h -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000" \
             CONFIG_NO_ERROR_ON_MISMATCH=y
 
       - name: 7. 生成 AnyKernel3 刷机包并上传
