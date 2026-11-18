@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V201)
+name: Build Meizu 16T Pure SukiSU Kernel (V202)
 
 on:
   workflow_dispatch:
@@ -15,11 +15,11 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并精准映射不兼容中断宏
+      - name: 3. 集end Sukisu 并适配旧内核内存与中断宏
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 在 include/linux/irq শুদ্ধ 顶端将高版本中断宏统一安全映射为 0 或基础值，彻底消除冲突
+          # 在 irq.h 头部补齐中断宏映射
           python3 -c "
           import os
           path = 'include/linux/irq.h'
@@ -43,6 +43,17 @@ jobs:
               #endif
               '''
               open(path, 'w', encoding='utf-8').write(safe_mapping + '\n' + content)
+          " || true
+
+          # 针对旧内核 mm/huge_memory.c 中的 try_to_unmap 调用进行安全适配
+          python3 -c "
+          import os
+          path = 'mm/huge_memory.c'
+          if os.path.exists(path):
+              content = open(path, 'r', encoding='utf-8', errors='ignore').read()
+              # 如果检测到 try_to_unmap 调用，进行版本兼容重写或注释处理
+              content = content.replace('try_to_unmap(page, ttu_flags);', 'try_to_unmap(page, (enum ttu_flags)ttu_flags);')
+              open(path, 'w', encoding='utf-8').write(content)
           " || true
           
           python3 -c "import os, re; [open(os.path.join(r,f), 'w', encoding='utf-8').write(re.sub(r'trace_sched_.*?;', '/* removed */', re.sub(r'sched_boost\s*\([^)]*\);', '/* removed */', open(os.path.join(r,f), 'r', encoding='utf-8', errors='ignore').read()))) for r,ds,fs in os.walk('kernel/ksu') for f in fs if f.endswith(('.c','.h'))] if os.path.exists('kernel/ksu') else None" || true
@@ -84,7 +95,7 @@ jobs:
           
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- prepare0
 
-      - name: 6. 正式全速编译内核镜像（回归纯净 KCFLAGS）
+      - name: 6. 正式全速编译内核镜像
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
