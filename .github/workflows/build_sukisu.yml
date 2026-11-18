@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V198)
+name: Build Meizu 16T Pure SukiSU Kernel (V199)
 
 on:
   workflow_dispatch:
@@ -30,7 +30,7 @@ jobs:
           cp include/generated/vdso-offsets.h arch/arm64/include/generated/vdso-offsets.h || true
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 5. 编译内核并打包刷机包
+      - name: 5. 配置内核与绝对纯净的 prepare0 预生成
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -55,10 +55,13 @@ jobs:
           # 修复主机 dtc 符号重定义
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l || true
           
-          # 1. 纯净生成基础头文件（绝对不加任何污染 asm-offsets 的宏）
+          # 绝对纯净执行 prepare0，绝不夹带任何宏
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- prepare0
-          
-          # 2. 正式全速编译内核镜像（此时安全挂载全套中断与调度兼容宏）
+
+      - name: 6. 正式全速编译内核镜像（挂载完整中断兼容防线）
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
           make O=out -j`nproc` \
             CC=aarch64-linux-gnu-gcc \
             HOSTCC=gcc \
@@ -68,7 +71,7 @@ jobs:
             KCFLAGS="-w -Wno-error -include linux/sched.h -DIRQ_TYPE_LEVEL_HIGH=4 -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000 -DIRQ_PER_CPU=512 -DIRQ_NOPROBE=16 -DIRQ_NOAUTOEN=33554432 -DIRQ_WAKE_THREAD=16777216 -DIRQ_NESTED_THREAD=32768 -DIRQ_NOOTHREAD=67108864 -DIRQ_PER_CPU_DEVID=1024 -DIRQ_NO_BALANCING=8192" \
             CONFIG_NO_ERROR_ON_MISMATCH=y
 
-      - name: 6. 生成 AnyKernel3 刷机包并上传
+      - name: 7. 生成 AnyKernel3 刷机包并上传
         run: |
           git clone --depth=1 https://github.com/kernel-sakers/AnyKernel3.git anykernel
           rm -rf anykernel/.git
@@ -80,7 +83,7 @@ jobs:
           cp "$IMG_PATH" anykernel/Image.gz-dtb
           cd anykernel && zip -r ../Meizu-16T-PureSukiSU-Kernel.zip *
 
-      - name: 7. 上传产物
+      - name: 8. 上传产物
         uses: actions/upload-artifact@v4
         with:
           name: Meizu-16T-PureSukiSU-Kernel
