@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V210)
+name: Build Meizu 16T Pure SukiSU Kernel (V211)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并创建全局 sukisu_compat.h
+      - name: 3. 集成 SukiSU-Ultra 并精准将 compat 头文件植入 KSU 源码内部
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
@@ -56,6 +56,18 @@ jobs:
 
           #endif
           COMPAT
+
+          # 自动将 sukisu_compat.h 注入到 kernel/ksu 下所有 C 文件顶部，绝对不污染内核核心代码与汇编
+          python3 -c "
+          import os
+          for r, ds, fs in os.walk('kernel/ksu'):
+              for f in fs:
+                  if f.endswith('.c'):
+                      fp = os.path.join(r, f)
+                      txt = open(fp, 'r', encoding='utf-8', errors='ignore').read()
+                      if 'sukisu_compat.h' not in txt:
+                          open(fp, 'w', encoding='utf-8').write('#include <linux/sukisu_compat.h>\n' + txt)
+          " || true
 
           # 针对旧内核 mm/huge_memory.c 中的 try_to_unmap 调用进行安全适配
           python3 -c "
@@ -105,10 +117,9 @@ jobs:
           # 修复主机 dtc 符号重定义
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l || true
           
-          # 此处绝对不带任何 sukisu_compat.h 引入，保证 asm-offsets 100% 纯净生成
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- prepare0
 
-      - name: 6. 正式全速编译内核镜像（仅在此阶段安全挂载 sukisu_compat.h）
+      - name: 6. 正式全速编译内核镜像（完全剥离任何全局 include 污染）
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -118,7 +129,7 @@ jobs:
             HOSTCFLAGS="-std=gnu89 -fcommon" \
             HOSTLDFLAGS="-fcommon" \
             CROSS_COMPILE=aarch64-linux-gnu- \
-            KCFLAGS="-w -Wno-error -include linux/sched.h -include linux/sukisu_compat.h -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000" \
+            KCFLAGS="-w -Wno-error -include linux/sched.h -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000" \
             CONFIG_NO_ERROR_ON_MISMATCH=y
 
       - name: 7. 生成 AnyKernel3 刷机包并上传
