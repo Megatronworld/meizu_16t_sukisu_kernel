@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V197)
+name: Build Meizu 16T Pure SukiSU Kernel (V198)
 
 on:
   workflow_dispatch:
@@ -55,10 +55,10 @@ jobs:
           # 修复主机 dtc 符号重定义
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l || true
           
-          # 生成基础头文件
+          # 1. 纯净生成基础头文件（绝对不加任何污染 asm-offsets 的宏）
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- prepare0
           
-          # 正式全速编译内核镜像（通过 KCFLAGS 避开汇编阶段，安全注入所有中断宏）
+          # 2. 正式全速编译内核镜像（此时安全挂载全套中断与调度兼容宏）
           make O=out -j`nproc` \
             CC=aarch64-linux-gnu-gcc \
             HOSTCC=gcc \
