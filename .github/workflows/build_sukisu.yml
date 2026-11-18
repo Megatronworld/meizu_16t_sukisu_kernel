@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V209)
+name: Build Meizu 16T Pure SukiSU Kernel (V210)
 
 on:
   workflow_dispatch:
@@ -15,11 +15,10 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并完善全局 sukisu_compat.h
+      - name: 3. 集成 SukiSU-Ultra 并创建全局 sukisu_compat.h
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 完善全局兼容头文件，包含所有中断、调度及桩对齐宏
           cat << 'COMPAT' > include/linux/sukisu_compat.h
           #ifndef _SUKISU_COMPAT_H
           #define _SUKISU_COMPAT_H
@@ -80,7 +79,7 @@ jobs:
           cp include/generated/vdso-offsets.h arch/arm64/include/generated/vdso-offsets.h || true
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 5. 智能匹配配置与 prepare0 预生成
+      - name: 5. 智能匹配配置与绝对纯净的 prepare0 预生成
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -106,9 +105,10 @@ jobs:
           # 修复主机 dtc 符号重定义
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l || true
           
+          # 此处绝对不带任何 sukisu_compat.h 引入，保证 asm-offsets 100% 纯净生成
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- prepare0
 
-      - name: 6. 正式全速编译内核镜像（通过 KCFLAGS 全局挂载兼容头文件）
+      - name: 6. 正式全速编译内核镜像（仅在此阶段安全挂载 sukisu_compat.h）
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
