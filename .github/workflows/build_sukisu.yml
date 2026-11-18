@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V207)
+name: Build Meizu 16T Pure SukiSU Kernel (V208)
 
 on:
   workflow_dispatch:
@@ -19,7 +19,6 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
-          # 在 sukisu_compat.h 中补齐 NOHZ_BALANCE_KICK 及其他调度缺失宏
           cat << 'COMPAT' > include/linux/sukisu_compat.h
           #ifndef _SUKISU_COMPAT_H
           #define _SUKISU_COMPAT_H
@@ -55,7 +54,6 @@ jobs:
           #endif
           COMPAT
 
-          # 自动将 sukisu_compat.h 注入到 kernel/ksu 下所有 C 文件顶部
           python3 -c "
           import os
           for r, ds, fs in os.walk('kernel/ksu'):
@@ -67,7 +65,6 @@ jobs:
                           open(fp, 'w', encoding='utf-8').write('#include <linux/sukisu_compat.h>\n' + txt)
           " || true
 
-          # 针对旧内核 mm/huge_memory.c 中的 try_to_unmap 调用进行安全适配
           python3 -c "
           import os
           path = 'mm/huge_memory.c'
@@ -89,12 +86,15 @@ jobs:
           cp include/generated/vdso-offsets.h arch/arm64/include/generated/vdso-offsets.h || true
           printf "gcc-plugins:\n\t@true\nall:\n\t@true\nclean:\n\t@true\n" > scripts/Makefile.gcc-plugins
 
-      - name: 5. 配置内核与 prepare0 预生成
+      - name: 5. 智能匹配配置与 prepare0 预生成
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
           mkdir -p out
-          CONFIG_FILE=`find arch/arm64/configs -name "*defconfig" | head -n 1`
+          
+          # 智能搜寻并选择最合适的 defconfig 文件
+          CONFIG_FILE=`find arch/arm64/configs -name "*meizu*" -o -name "*sdm855*" -o -name "*sm8150*" -o -name "*defconfig" | head -n 1`
+          echo "Using config file: $CONFIG_FILE"
           CONFIG_NAME=`basename "$CONFIG_FILE"`
           make O=out "$CONFIG_NAME"
           
