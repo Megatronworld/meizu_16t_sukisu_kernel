@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V227)
+name: Build Meizu 16T Pure SukiSU Kernel (V228)
 
 on:
   workflow_dispatch:
@@ -90,35 +90,26 @@ jobs:
           #endif
           COMPAT
 
-          # 用 GCC 内置原子原语安全替换 atomic_ll_sc.h 中内联汇编操作数报错的宏
+          # 直接替换 atomic_ll_sc.h 中 ATOMIC_OP 宏定义体，避免内联汇编操作数报错
           python3 -c "
-          import os
+          import os, re
           p = 'arch/arm64/include/asm/atomic_ll_sc.h'
           if os.path.exists(p):
-              fallback = '''
-          #undef ATOMIC_OP
-          #define ATOMIC_OP(op, asm_op, constraint) \\
+              txt = open(p, 'r', encoding='utf-8', errors='ignore').read()
+              replacement = '''#define ATOMIC_OP(op, asm_op, constraint) \\
           static inline void __ll_sc_atomic_##op(int i, atomic_t *v) \\
           { \\
               __atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST); \\
-          }
-
-          #undef ATOMIC_OP_RETURN
-          #define ATOMIC_OP_RETURN(op, asm_op, constraint) \\
-          static inline int __ll_sc_atomic_##op##_return(int i, atomic_t *v) \\
-          { \\
-              return __atomic_##op##_fetch(&v->counter, i, __ATOMIC_SEQ_CST); \\
-          }
-
-          #undef ATOMIC_FETCH_OP
-          #define ATOMIC_FETCH_OP(op, asm_op, constraint) \\
-          static inline int __ll_sc_atomic_fetch_##op(int i, atomic_t *v) \\
-          { \\
-              return __atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST); \\
-          }
-          '''
-              txt = open(p, 'r', encoding='utf-8', errors='ignore').read()
-              open(p, 'w', encoding='utf-8').write(txt + '\n' + fallback)
+          }'''
+              txt_new = re.sub(
+                  r'#define\s+ATOMIC_OP\s*\([^\n]*\)\s*(?:\\\n[^\n]*)*',
+                  replacement,
+                  txt,
+                  count=1
+              )
+              if txt_new == txt:
+                  txt_new = '#define ATOMIC_OP(op, asm_op, constraint) static inline void __ll_sc_atomic_##op(int i, atomic_t *v) { __atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST); }\n' + txt
+              open(p, 'w', encoding='utf-8').write(txt_new)
           " || true
 
           python3 -c "
