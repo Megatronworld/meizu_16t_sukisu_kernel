@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V225)
+name: Build Meizu 16T Pure SukiSU Kernel (V226)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并修复调度与 RC 中断宏兼容
+      - name: 3. 集成 SukiSU-Ultra 并修复调度、原子操作与 RC 中断宏兼容
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
@@ -89,6 +89,17 @@ jobs:
 
           #endif
           COMPAT
+
+          # 修复 arch/arm64/include/asm/atomic_ll_sc.h 内联汇编立即数约束报错
+          python3 -c "
+          import os, re
+          p = 'arch/arm64/include/asm/atomic_ll_sc.h'
+          if os.path.exists(p):
+              txt = open(p, 'r', encoding='utf-8', errors='ignore').read()
+              txt = re.sub(r'\"Ir\"', '\"r\"', txt)
+              txt = re.sub(r'\"i\"', '\"r\"', txt)
+              open(p, 'w', encoding='utf-8').write(txt)
+          " || true
 
           python3 -c "
           import os
@@ -205,14 +216,12 @@ jobs:
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS=n/g' out/.config || true
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO=n/g' out/.config || true
           sed -i 's/CONFIG_EFI_STUB=y/# CONFIG_EFI_STUB is not set/g' out/.config || true
-          sed -i 's/CONFIG_ARM64_LSE_ATOMICS=y/# CONFIG_ARM64_LSE_ATOMICS is not set/g' out/.config || true
           echo "CONFIG_KPROBES=y" >> out/.config
           echo "CONFIG_KRETPROBES=y" >> out/.config
           echo "CONFIG_HAVE_SYSCALL_TRACEPOINTS=y" >> out/.config
           echo "CONFIG_GCC_PLUGINS=n" >> out/.config
           echo "CONFIG_VDSO=n" >> out/.config
           echo "# CONFIG_EFI_STUB is not set" >> out/.config
-          echo "# CONFIG_ARM64_LSE_ATOMICS is not set" >> out/.config
           
           yes "" | make O=out oldconfig
           
