@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V224)
+name: Build Meizu 16T Pure SukiSU Kernel (V225)
 
 on:
   workflow_dispatch:
@@ -205,12 +205,14 @@ jobs:
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS=n/g' out/.config || true
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO=n/g' out/.config || true
           sed -i 's/CONFIG_EFI_STUB=y/# CONFIG_EFI_STUB is not set/g' out/.config || true
+          sed -i 's/CONFIG_ARM64_LSE_ATOMICS=y/# CONFIG_ARM64_LSE_ATOMICS is not set/g' out/.config || true
           echo "CONFIG_KPROBES=y" >> out/.config
           echo "CONFIG_KRETPROBES=y" >> out/.config
           echo "CONFIG_HAVE_SYSCALL_TRACEPOINTS=y" >> out/.config
           echo "CONFIG_GCC_PLUGINS=n" >> out/.config
           echo "CONFIG_VDSO=n" >> out/.config
           echo "# CONFIG_EFI_STUB is not set" >> out/.config
+          echo "# CONFIG_ARM64_LSE_ATOMICS is not set" >> out/.config
           
           yes "" | make O=out oldconfig
           
