@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V220)
+name: Build Meizu 16T Pure SukiSU Kernel (V221)
 
 on:
   workflow_dispatch:
@@ -211,13 +211,14 @@ jobs:
           
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- prepare0
 
-      - name: 6. 正式全速编译内核镜像并保障 vmlinux.lds 链接脚本
+      - name: 6. 正式全速编译内核镜像并修复 vmlinux.lds 语法
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
           if [ ! -e arch/arm64/include/asm/sizes.h ] && [ -f include/asm-generic/sizes.h ]; then
             printf "#include <asm-generic/sizes.h>\n" > arch/arm64/include/asm/sizes.h
           fi
+          rm -f arch/arm64/kernel/vmlinux.lds out/arch/arm64/kernel/vmlinux.lds
           KBUILD_ARGS=(
             O=out
             -j`nproc`
@@ -230,22 +231,8 @@ jobs:
             CONFIG_NO_ERROR_ON_MISMATCH=y
           )
           make "${KBUILD_ARGS[@]}" arch/arm64/kernel/vmlinux.lds || true
-          mkdir -p out/arch/arm64/kernel
-          if [ ! -s out/arch/arm64/kernel/vmlinux.lds ] && [ -f arch/arm64/kernel/vmlinux.lds.S ]; then
-            aarch64-linux-gnu-cpp -P -C \
-              -Iinclude \
-              -Iinclude/asm-generic \
-              -Iarch/arm64/include \
-              -Iarch/arm64/include/generated \
-              -Iout/include \
-              -Iout/include/generated \
-              -Iout/arch/arm64/include \
-              -Iout/arch/arm64/include/generated \
-              -D__ASSEMBLY__ \
-              -DCONFIG_64BIT \
-              arch/arm64/kernel/vmlinux.lds.S -o out/arch/arm64/kernel/vmlinux.lds || true
-          fi
           if [ -s out/arch/arm64/kernel/vmlinux.lds ]; then
+            grep -v '^#' out/arch/arm64/kernel/vmlinux.lds > out/arch/arm64/kernel/vmlinux.lds.clean && mv out/arch/arm64/kernel/vmlinux.lds.clean out/arch/arm64/kernel/vmlinux.lds
             cp out/arch/arm64/kernel/vmlinux.lds arch/arm64/kernel/vmlinux.lds
           fi
           make "${KBUILD_ARGS[@]}"
