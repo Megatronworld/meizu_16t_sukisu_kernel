@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V214)
+name: Build Meizu 16T Pure SukiSU Kernel (V215)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并修复调度与 EFI stub 兼容
+      - name: 3. 集成 SukiSU-Ultra 并修复调度与 RC 中断宏兼容
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
@@ -59,6 +59,24 @@ jobs:
           #ifndef NO_BOOST
           #define NO_BOOST 0
           #endif
+          #ifndef IRQ_TYPE_NONE
+          #define IRQ_TYPE_NONE 0
+          #endif
+          #ifndef IRQ_TYPE_EDGE_RISING
+          #define IRQ_TYPE_EDGE_RISING 1
+          #endif
+          #ifndef IRQ_TYPE_EDGE_FALLING
+          #define IRQ_TYPE_EDGE_FALLING 2
+          #endif
+          #ifndef IRQ_TYPE_EDGE_BOTH
+          #define IRQ_TYPE_EDGE_BOTH 3
+          #endif
+          #ifndef IRQ_TYPE_LEVEL_HIGH
+          #define IRQ_TYPE_LEVEL_HIGH 4
+          #endif
+          #ifndef IRQ_TYPE_LEVEL_LOW
+          #define IRQ_TYPE_LEVEL_LOW 8
+          #endif
           #ifndef EFI_HAVE_STUB
           #define EFI_HAVE_STUB 1
           #endif
@@ -89,7 +107,7 @@ jobs:
                       break
           " || true
 
-          # 修复 kernel/sched/fair.c 中 FULL_THROTTLE_BOOST 与非法左值赋值
+          # 修复 kernel/sched/fair.c 中 FULL_THROTTLE_BOOST 未定义及非法左值赋值
           python3 -c "
           import os, re
           p = 'kernel/sched/fair.c'
@@ -100,6 +118,19 @@ jobs:
                   txt = guard + txt
               txt = re.sub(r'sched_boost\s*\(\)\s*=\s*FULL_THROTTLE_BOOST\s*;', '/* removed invalid lvalue */', txt)
               open(p, 'w', encoding='utf-8').write(txt)
+          " || true
+
+          # 修复 drivers/media/rc 下驱动中 IRQ_TYPE_LEVEL_HIGH 未定义问题
+          python3 -c "
+          import os
+          guard = '#ifndef IRQ_TYPE_LEVEL_HIGH\n#define IRQ_TYPE_LEVEL_HIGH 4\n#endif\n'
+          for r, ds, fs in os.walk('drivers/media/rc'):
+              for f in fs:
+                  if f.endswith(('.c', '.h')):
+                      fp = os.path.join(r, f)
+                      txt = open(fp, 'r', encoding='utf-8', errors='ignore').read()
+                      if 'IRQ_TYPE_LEVEL_HIGH' in txt and 'define IRQ_TYPE_LEVEL_HIGH' not in txt:
+                          open(fp, 'w', encoding='utf-8').write(guard + txt)
           " || true
 
           # 修复 drivers/firmware/efi/libstub/arm64-stub.c：仅在非预处理指令行替换 TEXT_OFFSET
