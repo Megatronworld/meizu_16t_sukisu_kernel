@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V222)
+name: Build Meizu 16T Pure SukiSU Kernel (V223)
 
 on:
   workflow_dispatch:
@@ -211,7 +211,7 @@ jobs:
           
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- prepare0
 
-      - name: 6. 正式全速编译内核镜像并保障 vmlinux.lds 链接脚本
+      - name: 6. 正式全速编译内核镜像并修复 vmlinux.lds 链接脚本
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -233,7 +233,10 @@ jobs:
           make "${KBUILD_ARGS[@]}" || true
           mkdir -p out/arch/arm64/kernel
           if [ ! -s out/arch/arm64/kernel/vmlinux.lds ] && [ -f arch/arm64/kernel/vmlinux.lds.S ]; then
+            AUTOCONF_INC=""
+            [ -f out/include/generated/autoconf.h ] && AUTOCONF_INC="-include out/include/generated/autoconf.h"
             aarch64-linux-gnu-gcc -E -P -C -x assembler-with-cpp \
+              $AUTOCONF_INC \
               -Iinclude \
               -Iinclude/asm-generic \
               -Iarch/arm64/include \
@@ -247,6 +250,20 @@ jobs:
               arch/arm64/kernel/vmlinux.lds.S -o out/arch/arm64/kernel/vmlinux.lds || true
           fi
           if [ -s out/arch/arm64/kernel/vmlinux.lds ]; then
+            python3 -c "
+            import re
+            p = 'out/arch/arm64/kernel/vmlinux.lds'
+            lines = open(p, 'r', encoding='utf-8', errors='ignore').readlines()
+            clean = []
+            for l in lines:
+                s = l.strip()
+                if not s or s.startswith('#') or s.startswith(('extern ', 'typedef ', '__attribute__')):
+                    continue
+                if re.match(r'^[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*\)\s*;?$', s) and not any(k in s for k in ('ALIGN', 'ADDR', 'LOADADDR', 'CONSTANT', 'MAX', 'MIN', 'ASSERT', 'PROVIDE', 'HIDDEN')):
+                    continue
+                clean.append(l)
+            open(p, 'w', encoding='utf-8').writelines(clean)
+            " || true
             cp out/arch/arm64/kernel/vmlinux.lds arch/arm64/kernel/vmlinux.lds
           fi
           make "${KBUILD_ARGS[@]}"
