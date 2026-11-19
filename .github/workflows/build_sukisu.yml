@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V215)
+name: Build Meizu 16T Pure SukiSU Kernel (V217)
 
 on:
   workflow_dispatch:
@@ -77,6 +77,12 @@ jobs:
           #ifndef IRQ_TYPE_LEVEL_LOW
           #define IRQ_TYPE_LEVEL_LOW 8
           #endif
+          #ifndef IRQ_TYPE_LEVEL_MASK
+          #define IRQ_TYPE_LEVEL_MASK (IRQ_TYPE_LEVEL_LOW | IRQ_TYPE_LEVEL_HIGH)
+          #endif
+          #ifndef IRQ_TYPE_SENSE_MASK
+          #define IRQ_TYPE_SENSE_MASK 0x0000000f
+          #endif
           #ifndef EFI_HAVE_STUB
           #define EFI_HAVE_STUB 1
           #endif
@@ -107,20 +113,27 @@ jobs:
                       break
           " || true
 
-          # 修复 kernel/sched/fair.c 中 FULL_THROTTLE_BOOST 未定义及非法左值赋值
+          # 强制在 kernel/sched/rt.c、fair.c 及其他引用处补齐 FULL_THROTTLE_BOOST
           python3 -c "
           import os, re
-          p = 'kernel/sched/fair.c'
-          if os.path.exists(p):
-              txt = open(p, 'r', encoding='utf-8', errors='ignore').read()
-              guard = '#ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif\n'
-              if guard not in txt:
-                  txt = guard + txt
-              txt = re.sub(r'sched_boost\s*\(\)\s*=\s*FULL_THROTTLE_BOOST\s*;', '/* removed invalid lvalue */', txt)
-              open(p, 'w', encoding='utf-8').write(txt)
+          boost_def = '#undef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n'
+          for p in ['kernel/sched/rt.c', 'kernel/sched/fair.c']:
+              if os.path.exists(p):
+                  txt = open(p, 'r', encoding='utf-8', errors='ignore').read()
+                  if boost_def not in txt:
+                      txt = boost_def + txt
+                  txt = re.sub(r'sched_boost\s*\(\)\s*=\s*FULL_THROTTLE_BOOST\s*;', '/* removed invalid lvalue */', txt)
+                  open(p, 'w', encoding='utf-8').write(txt)
+          for r, ds, fs in os.walk('kernel/sched'):
+              for f in fs:
+                  if f.endswith('.c') and f not in ('rt.c', 'fair.c'):
+                      fp = os.path.join(r, f)
+                      txt = open(fp, 'r', encoding='utf-8', errors='ignore').read()
+                      if 'FULL_THROTTLE_BOOST' in txt and boost_def not in txt:
+                          open(fp, 'w', encoding='utf-8').write(boost_def + txt)
           " || true
 
-          # 修复 drivers/media/rc 下驱动中 IRQ_TYPE_LEVEL_HIGH 未定义问题
+          # 修复 drivers/media/rc（含 msm-geni-ir.c 等）中 IRQ_TYPE_LEVEL_HIGH 未定义问题
           python3 -c "
           import os
           guard = '#ifndef IRQ_TYPE_LEVEL_HIGH\n#define IRQ_TYPE_LEVEL_HIGH 4\n#endif\n'
