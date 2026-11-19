@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V223)
+name: Build Meizu 16T Pure SukiSU Kernel (V224)
 
 on:
   workflow_dispatch:
@@ -186,10 +186,18 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           mkdir -p out
-          CONFIG_FILE=`find arch/arm64/configs -name "*meizu*" -o -name "*sdm855*" -o -name "*sm8150*" -o -name "*defconfig" | head -n 1`
-          echo "Using config file: $CONFIG_FILE"
-          CONFIG_NAME=`basename "$CONFIG_FILE"`
-          make O=out "$CONFIG_NAME"
+          CONFIG_FILE=$(find arch/arm64/configs -type f \( -iname "*16t*" -o -iname "*meizu*" -o -iname "*sm8150*" -o -iname "*sdm855*" \) | head -n 1)
+          if [ -z "$CONFIG_FILE" ]; then
+            CONFIG_FILE=$(find arch/arm64/configs -type f -name "*_defconfig" ! -name "defconfig" | head -n 1)
+          fi
+          if [ -n "$CONFIG_FILE" ]; then
+            echo "Using config file: $CONFIG_FILE"
+            CONFIG_NAME=$(basename "$CONFIG_FILE")
+            make O=out "$CONFIG_NAME" || make O=out alldefconfig
+          else
+            echo "No specific defconfig found, falling back to alldefconfig"
+            make O=out alldefconfig
+          fi
           
           sed -i 's/# CONFIG_KPROBES is not set/CONFIG_KPROBES=y/g' out/.config || true
           sed -i 's/# CONFIG_KRETPROBES is not set/CONFIG_KRETPROBES=y/g' out/.config || true
