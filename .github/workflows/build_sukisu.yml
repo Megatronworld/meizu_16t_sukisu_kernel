@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V212)
+name: Build Meizu 16T Pure SukiSU Kernel (V213)
 
 on:
   workflow_dispatch:
@@ -50,6 +50,9 @@ jobs:
           #ifndef NOHZ_BALANCE_KICK
           #define NOHZ_BALANCE_KICK 2
           #endif
+          #ifndef FULL_THROTTLE_BOOST
+          #define FULL_THROTTLE_BOOST 0
+          #endif
           #ifndef EFI_HAVE_STUB
           #define EFI_HAVE_STUB 1
           #endif
@@ -68,7 +71,7 @@ jobs:
                           open(fp, 'w', encoding='utf-8').write('#include <linux/sukisu_compat.h>\n' + txt)
           " || true
 
-          # 修复 kernel/sched/core.c 中 NOHZ_BALANCE_KICK 未定义问题
+          # 修复 kernel/sched/core.c 与 kernel/sched/fair.c 调度宏缺失问题
           python3 -c "
           import os
           for p in ['kernel/sched/sched.h', 'include/linux/sched/nohz.h', 'kernel/sched/core.c']:
@@ -80,15 +83,29 @@ jobs:
                       break
           " || true
 
-          # 修复 drivers/firmware/efi/libstub/arm64-stub.c 中 TEXT_OFFSET 表达式缺失问题
           python3 -c "
           import os
+          for p in ['kernel/sched/sched.h', 'kernel/sched/fair.c']:
+              if os.path.exists(p):
+                  txt = open(p, 'r', encoding='utf-8', errors='ignore').read()
+                  if 'FULL_THROTTLE_BOOST' not in txt:
+                      guard = '#ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif\n'
+                      open(p, 'w', encoding='utf-8').write(guard + txt)
+                      break
+          " || true
+
+          # 修复 drivers/firmware/efi/libstub/arm64-stub.c 中 TEXT_OFFSET 表达式缺失问题
+          python3 -c "
+          import os, re
           p = 'drivers/firmware/efi/libstub/arm64-stub.c'
           if os.path.exists(p):
               txt = open(p, 'r', encoding='utf-8', errors='ignore').read()
               guard = '#ifndef TEXT_OFFSET\n#define TEXT_OFFSET 0\n#endif\n'
               if guard not in txt:
-                  open(p, 'w', encoding='utf-8').write(guard + txt)
+                  txt = guard + txt
+              if 'TEXT_OFFSET' in txt:
+                  txt = re.sub(r'\bTEXT_OFFSET\b', '(0)', txt)
+              open(p, 'w', encoding='utf-8').write(txt)
           " || true
 
           # 针对旧内核 mm/huge_memory.c 中的 try_to_unmap 调用进行安全适配
@@ -128,11 +145,13 @@ jobs:
           sed -i 's/# CONFIG_HAVE_SYSCALL_TRACEPOINTS is not set/CONFIG_HAVE_SYSCALL_TRACEPOINTS=y/g' out/.config || true
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS=n/g' out/.config || true
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO=n/g' out/.config || true
+          sed -i 's/CONFIG_EFI_STUB=y/# CONFIG_EFI_STUB is not set/g' out/.config || true
           echo "CONFIG_KPROBES=y" >> out/.config
           echo "CONFIG_KRETPROBES=y" >> out/.config
           echo "CONFIG_HAVE_SYSCALL_TRACEPOINTS=y" >> out/.config
           echo "CONFIG_GCC_PLUGINS=n" >> out/.config
           echo "CONFIG_VDSO=n" >> out/.config
+          echo "# CONFIG_EFI_STUB is not set" >> out/.config
           
           yes "" | make O=out oldconfig
           
