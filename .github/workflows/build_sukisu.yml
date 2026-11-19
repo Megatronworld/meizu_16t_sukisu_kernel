@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V217)
+name: Build Meizu 16T Pure SukiSU Kernel (V218)
 
 on:
   workflow_dispatch:
@@ -101,7 +101,6 @@ jobs:
                           open(fp, 'w', encoding='utf-8').write('#include <linux/sukisu_compat.h>\n' + txt)
           " || true
 
-          # 修复 kernel/sched/core.c 中 NOHZ_BALANCE_KICK 未定义问题
           python3 -c "
           import os
           for p in ['kernel/sched/sched.h', 'include/linux/sched/nohz.h', 'kernel/sched/core.c']:
@@ -113,7 +112,6 @@ jobs:
                       break
           " || true
 
-          # 强制在 kernel/sched/rt.c、fair.c 及其他引用处补齐 FULL_THROTTLE_BOOST
           python3 -c "
           import os, re
           boost_def = '#undef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n'
@@ -133,7 +131,6 @@ jobs:
                           open(fp, 'w', encoding='utf-8').write(boost_def + txt)
           " || true
 
-          # 修复 drivers/media/rc（含 msm-geni-ir.c 等）中 IRQ_TYPE_LEVEL_HIGH 未定义问题
           python3 -c "
           import os
           guard = '#ifndef IRQ_TYPE_LEVEL_HIGH\n#define IRQ_TYPE_LEVEL_HIGH 4\n#endif\n'
@@ -146,7 +143,6 @@ jobs:
                           open(fp, 'w', encoding='utf-8').write(guard + txt)
           " || true
 
-          # 修复 drivers/firmware/efi/libstub/arm64-stub.c：仅在非预处理指令行替换 TEXT_OFFSET
           python3 -c "
           import os, re
           p = 'drivers/firmware/efi/libstub/arm64-stub.c'
@@ -164,7 +160,6 @@ jobs:
               open(p, 'w', encoding='utf-8').writelines(out_lines)
           " || true
 
-          # 针对旧内核 mm/huge_memory.c 中的 try_to_unmap 调用进行安全适配
           python3 -c "
           import os
           path = 'mm/huge_memory.c'
@@ -216,10 +211,21 @@ jobs:
           
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- prepare0
 
-      - name: 6. 正式全速编译内核镜像
+      - name: 6. 正式全速编译内核镜像并保障 vmlinux.lds 链接脚本
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
+          make O=out -j`nproc` \
+            CC=aarch64-linux-gnu-gcc \
+            HOSTCC=gcc \
+            HOSTCFLAGS="-std=gnu89 -fcommon" \
+            HOSTLDFLAGS="-fcommon" \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            KCFLAGS="-w -Wno-error -include linux/sched.h -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000" \
+            CONFIG_NO_ERROR_ON_MISMATCH=y arch/arm64/kernel/vmlinux.lds || true
+          if [ -f out/arch/arm64/kernel/vmlinux.lds ] && [ ! -f arch/arm64/kernel/vmlinux.lds ]; then
+            cp out/arch/arm64/kernel/vmlinux.lds arch/arm64/kernel/vmlinux.lds
+          fi
           make O=out -j`nproc` \
             CC=aarch64-linux-gnu-gcc \
             HOSTCC=gcc \
