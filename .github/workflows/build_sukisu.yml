@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V229)
+name: Build Meizu 16T Pure SukiSU Kernel (V230)
 
 on:
   workflow_dispatch:
@@ -90,11 +90,13 @@ jobs:
           #endif
           COMPAT
 
-          # 完整替换 atomic_ll_sc.h 中首个 #define ATOMIC_OP(...) 多行宏定义
+          # 恢复 atomic_ll_sc.h 干净状态并用纯 C __atomic_* 内联实现替换 ATOMIC_OP 宏
+          git checkout arch/arm64/include/asm/atomic_ll_sc.h || true
           python3 -c "
           import os
           p = 'arch/arm64/include/asm/atomic_ll_sc.h'
           if os.path.exists(p):
+              nl = chr(10)
               lines = open(p, 'r', encoding='utf-8', errors='ignore').readlines()
               out = []
               i = 0
@@ -102,15 +104,15 @@ jobs:
               while i < len(lines):
                   s = lines[i].lstrip()
                   if not replaced and s.startswith('#define ATOMIC_OP('):
-                      while i < len(lines) and lines[i].rstrip('\n').endswith('\\\\'):
+                      while i < len(lines) and lines[i].rstrip(nl).endswith('\\\\'):
                           i += 1
                       if i < len(lines):
                           i += 1
-                      out.append('#define ATOMIC_OP(op, asm_op, constraint) \\\n')
-                      out.append('static inline void __ll_sc_atomic_##op(int i, atomic_t *v) \\\n')
-                      out.append('{ \\\n')
-                      out.append('\t__atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST); \\\n')
-                      out.append('}\n')
+                      out.append('#define ATOMIC_OP(op, asm_op, constraint) \\' + nl)
+                      out.append('static inline void __ll_sc_atomic_##op(int i, atomic_t *v) \\' + nl)
+                      out.append('{ \\' + nl)
+                      out.append('\t__atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST); \\' + nl)
+                      out.append('}' + nl)
                       replaced = True
                       continue
                   out.append(lines[i])
