@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V226)
+name: Build Meizu 16T Pure SukiSU Kernel (V227)
 
 on:
   workflow_dispatch:
@@ -90,15 +90,35 @@ jobs:
           #endif
           COMPAT
 
-          # 修复 arch/arm64/include/asm/atomic_ll_sc.h 内联汇编立即数约束报错
+          # 用 GCC 内置原子原语安全替换 atomic_ll_sc.h 中内联汇编操作数报错的宏
           python3 -c "
-          import os, re
+          import os
           p = 'arch/arm64/include/asm/atomic_ll_sc.h'
           if os.path.exists(p):
+              fallback = '''
+          #undef ATOMIC_OP
+          #define ATOMIC_OP(op, asm_op, constraint) \\
+          static inline void __ll_sc_atomic_##op(int i, atomic_t *v) \\
+          { \\
+              __atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST); \\
+          }
+
+          #undef ATOMIC_OP_RETURN
+          #define ATOMIC_OP_RETURN(op, asm_op, constraint) \\
+          static inline int __ll_sc_atomic_##op##_return(int i, atomic_t *v) \\
+          { \\
+              return __atomic_##op##_fetch(&v->counter, i, __ATOMIC_SEQ_CST); \\
+          }
+
+          #undef ATOMIC_FETCH_OP
+          #define ATOMIC_FETCH_OP(op, asm_op, constraint) \\
+          static inline int __ll_sc_atomic_fetch_##op(int i, atomic_t *v) \\
+          { \\
+              return __atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST); \\
+          }
+          '''
               txt = open(p, 'r', encoding='utf-8', errors='ignore').read()
-              txt = re.sub(r'\"Ir\"', '\"r\"', txt)
-              txt = re.sub(r'\"i\"', '\"r\"', txt)
-              open(p, 'w', encoding='utf-8').write(txt)
+              open(p, 'w', encoding='utf-8').write(txt + '\n' + fallback)
           " || true
 
           python3 -c "
