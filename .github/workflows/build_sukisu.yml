@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V218)
+name: Build Meizu 16T Pure SukiSU Kernel (V219)
 
 on:
   workflow_dispatch:
@@ -215,25 +215,26 @@ jobs:
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          make O=out -j`nproc` \
-            CC=aarch64-linux-gnu-gcc \
-            HOSTCC=gcc \
-            HOSTCFLAGS="-std=gnu89 -fcommon" \
-            HOSTLDFLAGS="-fcommon" \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            KCFLAGS="-w -Wno-error -include linux/sched.h -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000" \
-            CONFIG_NO_ERROR_ON_MISMATCH=y arch/arm64/kernel/vmlinux.lds || true
-          if [ -f out/arch/arm64/kernel/vmlinux.lds ] && [ ! -f arch/arm64/kernel/vmlinux.lds ]; then
+          KBUILD_ARGS=(
+            O=out
+            -j`nproc`
+            CC=aarch64-linux-gnu-gcc
+            HOSTCC=gcc
+            HOSTCFLAGS="-std=gnu89 -fcommon"
+            HOSTLDFLAGS="-fcommon"
+            CROSS_COMPILE=aarch64-linux-gnu-
+            KCFLAGS="-w -Wno-error -include linux/sched.h -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000"
+            CONFIG_NO_ERROR_ON_MISMATCH=y
+          )
+          make "${KBUILD_ARGS[@]}" arch/arm64/kernel/vmlinux.lds || true
+          mkdir -p out/arch/arm64/kernel
+          if [ ! -f out/arch/arm64/kernel/vmlinux.lds ] && [ -f arch/arm64/kernel/vmlinux.lds.S ]; then
+            aarch64-linux-gnu-cpp -P -C -Iinclude -Iarch/arm64/include -Iout/include -Iout/arch/arm64/include -D__ASSEMBLY__ -DCONFIG_64BIT arch/arm64/kernel/vmlinux.lds.S -o out/arch/arm64/kernel/vmlinux.lds || true
+          fi
+          if [ -f out/arch/arm64/kernel/vmlinux.lds ]; then
             cp out/arch/arm64/kernel/vmlinux.lds arch/arm64/kernel/vmlinux.lds
           fi
-          make O=out -j`nproc` \
-            CC=aarch64-linux-gnu-gcc \
-            HOSTCC=gcc \
-            HOSTCFLAGS="-std=gnu89 -fcommon" \
-            HOSTLDFLAGS="-fcommon" \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            KCFLAGS="-w -Wno-error -include linux/sched.h -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000" \
-            CONFIG_NO_ERROR_ON_MISMATCH=y
+          make "${KBUILD_ARGS[@]}"
 
       - name: 7. 生成 AnyKernel3 刷机包并上传
         run: |
