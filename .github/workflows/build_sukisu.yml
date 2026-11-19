@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V219)
+name: Build Meizu 16T Pure SukiSU Kernel (V220)
 
 on:
   workflow_dispatch:
@@ -215,6 +215,9 @@ jobs:
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
+          if [ ! -e arch/arm64/include/asm/sizes.h ] && [ -f include/asm-generic/sizes.h ]; then
+            printf "#include <asm-generic/sizes.h>\n" > arch/arm64/include/asm/sizes.h
+          fi
           KBUILD_ARGS=(
             O=out
             -j`nproc`
@@ -228,10 +231,21 @@ jobs:
           )
           make "${KBUILD_ARGS[@]}" arch/arm64/kernel/vmlinux.lds || true
           mkdir -p out/arch/arm64/kernel
-          if [ ! -f out/arch/arm64/kernel/vmlinux.lds ] && [ -f arch/arm64/kernel/vmlinux.lds.S ]; then
-            aarch64-linux-gnu-cpp -P -C -Iinclude -Iarch/arm64/include -Iout/include -Iout/arch/arm64/include -D__ASSEMBLY__ -DCONFIG_64BIT arch/arm64/kernel/vmlinux.lds.S -o out/arch/arm64/kernel/vmlinux.lds || true
+          if [ ! -s out/arch/arm64/kernel/vmlinux.lds ] && [ -f arch/arm64/kernel/vmlinux.lds.S ]; then
+            aarch64-linux-gnu-cpp -P -C \
+              -Iinclude \
+              -Iinclude/asm-generic \
+              -Iarch/arm64/include \
+              -Iarch/arm64/include/generated \
+              -Iout/include \
+              -Iout/include/generated \
+              -Iout/arch/arm64/include \
+              -Iout/arch/arm64/include/generated \
+              -D__ASSEMBLY__ \
+              -DCONFIG_64BIT \
+              arch/arm64/kernel/vmlinux.lds.S -o out/arch/arm64/kernel/vmlinux.lds || true
           fi
-          if [ -f out/arch/arm64/kernel/vmlinux.lds ]; then
+          if [ -s out/arch/arm64/kernel/vmlinux.lds ]; then
             cp out/arch/arm64/kernel/vmlinux.lds arch/arm64/kernel/vmlinux.lds
           fi
           make "${KBUILD_ARGS[@]}"
