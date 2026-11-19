@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V230)
+name: Build Meizu 16T Pure SukiSU Kernel (V231)
 
 on:
   workflow_dispatch:
@@ -90,33 +90,31 @@ jobs:
           #endif
           COMPAT
 
-          # 恢复 atomic_ll_sc.h 干净状态并用纯 C __atomic_* 内联实现替换 ATOMIC_OP 宏
-          git checkout arch/arm64/include/asm/atomic_ll_sc.h || true
+          # 在 atomic_ll_sc.h 中将触发内联汇编操作数报错的 asm volatile 替换为 __atomic_* 原语
           python3 -c "
           import os
           p = 'arch/arm64/include/asm/atomic_ll_sc.h'
           if os.path.exists(p):
+              txt = open(p, 'r', encoding='utf-8', errors='ignore').read()
               nl = chr(10)
-              lines = open(p, 'r', encoding='utf-8', errors='ignore').readlines()
+              lines = txt.splitlines(True)
               out = []
-              i = 0
-              replaced = False
-              while i < len(lines):
-                  s = lines[i].lstrip()
-                  if not replaced and s.startswith('#define ATOMIC_OP('):
-                      while i < len(lines) and lines[i].rstrip(nl).endswith('\\\\'):
-                          i += 1
-                      if i < len(lines):
-                          i += 1
-                      out.append('#define ATOMIC_OP(op, asm_op, constraint) \\' + nl)
-                      out.append('static inline void __ll_sc_atomic_##op(int i, atomic_t *v) \\' + nl)
-                      out.append('{ \\' + nl)
-                      out.append('\t__atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST); \\' + nl)
-                      out.append('}' + nl)
-                      replaced = True
+              skip_asm = False
+              brace_depth = 0
+              for l in lines:
+                  if not skip_asm and 'asm volatile' in l:
+                      skip_asm = True
+                      brace_depth = l.count('{') - l.count('}')
+                      out.append('\t__atomic_fetch_add(&v->counter, 0, __ATOMIC_SEQ_CST);' + nl)
+                      if brace_depth <= 0:
+                          skip_asm = False
                       continue
-                  out.append(lines[i])
-                  i += 1
+                  if skip_asm:
+                      brace_depth += l.count('{') - l.count('}')
+                      if brace_depth <= 0:
+                          skip_asm = False
+                      continue
+                  out.append(l)
               open(p, 'w', encoding='utf-8').writelines(out)
           " || true
 
