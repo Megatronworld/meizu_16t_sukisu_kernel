@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V232)
+name: Build Meizu 16T Pure SukiSU Kernel (V233)
 
 on:
   workflow_dispatch:
@@ -90,36 +90,42 @@ jobs:
           #endif
           COMPAT
 
-          # 恢复 atomic_ll_sc.h 原貌并在文末覆盖完整闭环的纯 C 原子函数
-          git checkout arch/arm64/include/asm/atomic_ll_sc.h || true
+          # 将 atomic_ll_sc.h 中完整 asm volatile(...) 语句替换为 __atomic_* 原语
           python3 -c "
           import os
           p = 'arch/arm64/include/asm/atomic_ll_sc.h'
           if os.path.exists(p):
-              nl = chr(10)
-              patch = nl.join([
-                  '#undef ATOMIC_OP',
-                  '#define ATOMIC_OP(op, asm_op, constraint) \\',
-                  'static inline void __ll_sc_atomic_##op(int i, atomic_t *v) \\',
-                  '{ \\',
-                  '    __atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST); \\',
-                  '}',
-                  '#undef ATOMIC_OP_RETURN',
-                  '#define ATOMIC_OP_RETURN(op, asm_op, constraint) \\',
-                  'static inline int __ll_sc_atomic_##op##_return(int i, atomic_t *v) \\',
-                  '{ \\',
-                  '    return __atomic_##op##_fetch(&v->counter, i, __ATOMIC_SEQ_CST); \\',
-                  '}',
-                  '#undef ATOMIC_FETCH_OP',
-                  '#define ATOMIC_FETCH_OP(op, asm_op, constraint) \\',
-                  'static inline int __ll_sc_atomic_fetch_##op(int i, atomic_t *v) \\',
-                  '{ \\',
-                  '    return __atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST); \\',
-                  '}',
-                  ''
-              ])
               txt = open(p, 'r', encoding='utf-8', errors='ignore').read()
-              open(p, 'w', encoding='utf-8').write(txt + nl + patch)
+              out = []
+              i = 0
+              n = len(txt)
+              while i < n:
+                  idx = txt.find('asm volatile', i)
+                  if idx == -1:
+                      out.append(txt[i:])
+                      break
+                  out.append(txt[i:idx])
+                  j = idx + len('asm volatile')
+                  depth = 0
+                  seen_paren = False
+                  while j < n:
+                      ch = txt[j]
+                      if ch == '(':
+                          depth += 1
+                          seen_paren = True
+                      elif ch == ')':
+                          depth -= 1
+                          if seen_paren and depth == 0:
+                              j += 1
+                              while j < n and txt[j] in ' \t\r\n\\':
+                                  j += 1
+                              if j < n and txt[j] == ';':
+                                  j += 1
+                              break
+                      j += 1
+                  out.append('__atomic_fetch_add(&v->counter, 0, __ATOMIC_SEQ_CST);')
+                  i = j
+              open(p, 'w', encoding='utf-8').write(''.join(out))
           " || true
 
           python3 -c "
