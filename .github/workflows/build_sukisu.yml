@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V213)
+name: Build Meizu 16T Pure SukiSU Kernel (V214)
 
 on:
   workflow_dispatch:
@@ -53,6 +53,12 @@ jobs:
           #ifndef FULL_THROTTLE_BOOST
           #define FULL_THROTTLE_BOOST 0
           #endif
+          #ifndef CONSERVATIVE_BOOST
+          #define CONSERVATIVE_BOOST 0
+          #endif
+          #ifndef NO_BOOST
+          #define NO_BOOST 0
+          #endif
           #ifndef EFI_HAVE_STUB
           #define EFI_HAVE_STUB 1
           #endif
@@ -71,7 +77,7 @@ jobs:
                           open(fp, 'w', encoding='utf-8').write('#include <linux/sukisu_compat.h>\n' + txt)
           " || true
 
-          # 修复 kernel/sched/core.c 与 kernel/sched/fair.c 调度宏缺失问题
+          # 修复 kernel/sched/core.c 中 NOHZ_BALANCE_KICK 未定义问题
           python3 -c "
           import os
           for p in ['kernel/sched/sched.h', 'include/linux/sched/nohz.h', 'kernel/sched/core.c']:
@@ -83,29 +89,35 @@ jobs:
                       break
           " || true
 
+          # 修复 kernel/sched/fair.c 中 FULL_THROTTLE_BOOST 与非法左值赋值
           python3 -c "
-          import os
-          for p in ['kernel/sched/sched.h', 'kernel/sched/fair.c']:
-              if os.path.exists(p):
-                  txt = open(p, 'r', encoding='utf-8', errors='ignore').read()
-                  if 'FULL_THROTTLE_BOOST' not in txt:
-                      guard = '#ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif\n'
-                      open(p, 'w', encoding='utf-8').write(guard + txt)
-                      break
+          import os, re
+          p = 'kernel/sched/fair.c'
+          if os.path.exists(p):
+              txt = open(p, 'r', encoding='utf-8', errors='ignore').read()
+              guard = '#ifndef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n#endif\n'
+              if guard not in txt:
+                  txt = guard + txt
+              txt = re.sub(r'sched_boost\s*\(\)\s*=\s*FULL_THROTTLE_BOOST\s*;', '/* removed invalid lvalue */', txt)
+              open(p, 'w', encoding='utf-8').write(txt)
           " || true
 
-          # 修复 drivers/firmware/efi/libstub/arm64-stub.c 中 TEXT_OFFSET 表达式缺失问题
+          # 修复 drivers/firmware/efi/libstub/arm64-stub.c：仅在非预处理指令行替换 TEXT_OFFSET
           python3 -c "
           import os, re
           p = 'drivers/firmware/efi/libstub/arm64-stub.c'
           if os.path.exists(p):
-              txt = open(p, 'r', encoding='utf-8', errors='ignore').read()
-              guard = '#ifndef TEXT_OFFSET\n#define TEXT_OFFSET 0\n#endif\n'
-              if guard not in txt:
-                  txt = guard + txt
-              if 'TEXT_OFFSET' in txt:
-                  txt = re.sub(r'\bTEXT_OFFSET\b', '(0)', txt)
-              open(p, 'w', encoding='utf-8').write(txt)
+              lines = open(p, 'r', encoding='utf-8', errors='ignore').readlines()
+              out_lines = []
+              has_guard = any('TEXT_OFFSET' in l and ('#ifndef' in l or '#define' in l) for l in lines)
+              if not has_guard:
+                  out_lines.append('#ifndef TEXT_OFFSET\n#define TEXT_OFFSET 0\n#endif\n')
+              for l in lines:
+                  if l.lstrip().startswith('#'):
+                      out_lines.append(l)
+                  else:
+                      out_lines.append(re.sub(r'\bTEXT_OFFSET\b', '0', l))
+              open(p, 'w', encoding='utf-8').writelines(out_lines)
           " || true
 
           # 针对旧内核 mm/huge_memory.c 中的 try_to_unmap 调用进行安全适配
