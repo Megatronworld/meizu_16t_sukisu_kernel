@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V211)
+name: Build Meizu 16T Pure SukiSU Kernel (V212)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并精准将 compat 头文件植入 KSU 源码内部
+      - name: 3. 集成 SukiSU-Ultra 并修复调度与 EFI stub 兼容
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
@@ -57,7 +57,6 @@ jobs:
           #endif
           COMPAT
 
-          # 自动将 sukisu_compat.h 注入到 kernel/ksu 下所有 C 文件顶部，绝对不污染内核核心代码与汇编
           python3 -c "
           import os
           for r, ds, fs in os.walk('kernel/ksu'):
@@ -67,6 +66,29 @@ jobs:
                       txt = open(fp, 'r', encoding='utf-8', errors='ignore').read()
                       if 'sukisu_compat.h' not in txt:
                           open(fp, 'w', encoding='utf-8').write('#include <linux/sukisu_compat.h>\n' + txt)
+          " || true
+
+          # 修复 kernel/sched/core.c 中 NOHZ_BALANCE_KICK 未定义问题
+          python3 -c "
+          import os
+          for p in ['kernel/sched/sched.h', 'include/linux/sched/nohz.h', 'kernel/sched/core.c']:
+              if os.path.exists(p):
+                  txt = open(p, 'r', encoding='utf-8', errors='ignore').read()
+                  if 'NOHZ_BALANCE_KICK' not in txt:
+                      guard = '#ifndef NOHZ_BALANCE_KICK\n#define NOHZ_BALANCE_KICK 2\n#endif\n'
+                      open(p, 'w', encoding='utf-8').write(guard + txt)
+                      break
+          " || true
+
+          # 修复 drivers/firmware/efi/libstub/arm64-stub.c 中 TEXT_OFFSET 表达式缺失问题
+          python3 -c "
+          import os
+          p = 'drivers/firmware/efi/libstub/arm64-stub.c'
+          if os.path.exists(p):
+              txt = open(p, 'r', encoding='utf-8', errors='ignore').read()
+              guard = '#ifndef TEXT_OFFSET\n#define TEXT_OFFSET 0\n#endif\n'
+              if guard not in txt:
+                  open(p, 'w', encoding='utf-8').write(guard + txt)
           " || true
 
           # 针对旧内核 mm/huge_memory.c 中的 try_to_unmap 调用进行安全适配
@@ -119,7 +141,7 @@ jobs:
           
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" CROSS_COMPILE=aarch64-linux-gnu- prepare0
 
-      - name: 6. 正式全速编译内核镜像（完全剥离任何全局 include 污染）
+      - name: 6. 正式全速编译内核镜像
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
