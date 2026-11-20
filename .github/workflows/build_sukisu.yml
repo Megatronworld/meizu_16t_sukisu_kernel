@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V235)
+name: Build Meizu 16T Pure SukiSU Kernel (V236)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并修复调度、原子操作与 RC 中断宏兼容
+      - name: 3. 集成 SukiSU-Ultra 并修复调度与 RC 中断宏兼容
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
@@ -23,30 +23,6 @@ jobs:
           #ifndef _SUKISU_COMPAT_H
           #define _SUKISU_COMPAT_H
 
-          #ifndef IRQ_PER_CPU
-          #define IRQ_PER_CPU 512
-          #endif
-          #ifndef IRQ_NOPROBE
-          #define IRQ_NOPROBE 16
-          #endif
-          #ifndef IRQ_NOAUTOEN
-          #define IRQ_NOAUTOEN 33554432
-          #endif
-          #ifndef IRQ_WAKE_THREAD
-          #define IRQ_WAKE_THREAD 16777216
-          #endif
-          #ifndef IRQ_NESTED_THREAD
-          #define IRQ_NESTED_THREAD 32768
-          #endif
-          #ifndef IRQ_NOOTHREAD
-          #define IRQ_NOOTHREAD 67108864
-          #endif
-          #ifndef IRQ_PER_CPU_DEVID
-          #define IRQ_PER_CPU_DEVID 1024
-          #endif
-          #ifndef IRQ_NO_BALANCING
-          #define IRQ_NO_BALANCING 8192
-          #endif
           #ifndef NOHZ_BALANCE_KICK
           #define NOHZ_BALANCE_KICK 2
           #endif
@@ -86,27 +62,6 @@ jobs:
           #ifndef EFI_HAVE_STUB
           #define EFI_HAVE_STUB 1
           #endif
-
-          #undef ATOMIC_OP
-          #define ATOMIC_OP(op, asm_op, constraint) \
-          static inline void __ll_sc_atomic_##op(int i, atomic_t *v) \
-          { \
-              __atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST); \
-          }
-
-          #undef ATOMIC_OP_RETURN
-          #define ATOMIC_OP_RETURN(op, asm_op, constraint) \
-          static inline int __ll_sc_atomic_##op##_return(int i, atomic_t *v) \
-          { \
-              return __atomic_##op##_fetch(&v->counter, i, __ATOMIC_SEQ_CST); \
-          }
-
-          #undef ATOMIC_FETCH_OP
-          #define ATOMIC_FETCH_OP(op, asm_op, constraint) \
-          static inline int __ll_sc_atomic_fetch_##op(int i, atomic_t *v) \
-          { \
-              return __atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST); \
-          }
 
           #endif
           COMPAT
@@ -238,7 +193,7 @@ jobs:
           # 修复主机 dtc 符号重定义
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l || true
           
-          make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" KCFLAGS="-w -Wno-error -include linux/sukisu_compat.h" CROSS_COMPILE=aarch64-linux-gnu- prepare0
+          make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" KCFLAGS="-w -Wno-error" CROSS_COMPILE=aarch64-linux-gnu- prepare0
 
       - name: 6. 正式全速编译内核镜像并修复 vmlinux.lds 链接脚本
         run: |
@@ -256,7 +211,7 @@ jobs:
             HOSTCFLAGS="-std=gnu89 -fcommon"
             HOSTLDFLAGS="-fcommon"
             CROSS_COMPILE=aarch64-linux-gnu-
-            KCFLAGS="-w -Wno-error -include linux/sukisu_compat.h -include linux/sched.h -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000"
+            KCFLAGS="-w -Wno-error -include linux/sched.h -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000"
             CONFIG_NO_ERROR_ON_MISMATCH=y
           )
           make "${KBUILD_ARGS[@]}" || true
