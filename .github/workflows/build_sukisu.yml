@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V236)
+name: Build Meizu 16T Pure SukiSU Kernel (V238)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并修复调度与 RC 中断宏兼容
+      - name: 3. 集成 SukiSU-Ultra 并修复调度、原子操作与 RC 中断宏兼容
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
@@ -65,6 +65,79 @@ jobs:
 
           #endif
           COMPAT
+
+          # 用纯 C __atomic_* 内联原语重写 atomic_ll_sc.h，彻底解决内联汇编操作数报错
+          python3 -c "
+          import os
+          p = 'arch/arm64/include/asm/atomic_ll_sc.h'
+          if os.path.exists(p):
+              nl = chr(10)
+              code = nl.join([
+                  '#ifndef __ASM_ATOMIC_LL_SC_H',
+                  '#define __ASM_ATOMIC_LL_SC_H',
+                  '',
+                  '#include <linux/types.h>',
+                  '',
+                  '#define __LL_SC_INLINE static inline',
+                  '#define __LL_SC_PREFIX(x) __ll_sc_##x',
+                  '#define __LL_SC_EXPORT(x)',
+                  '',
+                  '#define ATOMIC_OP(op, asm_op, constraint) \\',
+                  'static inline void __ll_sc_atomic_##op(int i, atomic_t *v) \\',
+                  '{ \\',
+                  '    __atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST); \\',
+                  '}',
+                  '',
+                  '#define ATOMIC_OP_RETURN(op, asm_op, constraint) \\',
+                  'static inline int __ll_sc_atomic_##op##_return(int i, atomic_t *v) \\',
+                  '{ \\',
+                  '    return __atomic_##op##_fetch(&v->counter, i, __ATOMIC_SEQ_CST); \\',
+                  '}',
+                  '',
+                  '#define ATOMIC_FETCH_OP(op, asm_op, constraint) \\',
+                  'static inline int __ll_sc_atomic_fetch_##op(int i, atomic_t *v) \\',
+                  '{ \\',
+                  '    return __atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST); \\',
+                  '}',
+                  '',
+                  '#define ATOMIC_OPS(op, asm_op) \\',
+                  '    ATOMIC_OP(op, asm_op, \"r\") \\',
+                  '    ATOMIC_OP_RETURN(op, asm_op, \"r\") \\',
+                  '    ATOMIC_FETCH_OP(op, asm_op, \"r\")',
+                  '',
+                  'ATOMIC_OPS(add, add)',
+                  'ATOMIC_OPS(sub, sub)',
+                  '',
+                  '#undef ATOMIC_OPS',
+                  '#define ATOMIC_OPS(op, asm_op) \\',
+                  '    ATOMIC_OP(op, asm_op, \"r\") \\',
+                  '    ATOMIC_FETCH_OP(op, asm_op, \"r\")',
+                  '',
+                  'ATOMIC_OPS(and, and)',
+                  'ATOMIC_OPS(or, orr)',
+                  'ATOMIC_OPS(xor, eor)',
+                  '',
+                  '#undef ATOMIC_OPS',
+                  '#undef ATOMIC_FETCH_OP',
+                  '#undef ATOMIC_OP_RETURN',
+                  '#undef ATOMIC_OP',
+                  '',
+                  'static inline int __ll_sc_atomic_cmpxchg(atomic_t *ptr, int old, int newval)',
+                  '{',
+                  '    int expected = old;',
+                  '    __atomic_compare_exchange_n(&ptr->counter, &expected, newval, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);',
+                  '    return expected;',
+                  '}',
+                  '',
+                  'static inline int __ll_sc_atomic_xchg(atomic_t *ptr, int newval)',
+                  '{',
+                  '    return __atomic_exchange_n(&ptr->counter, newval, __ATOMIC_SEQ_CST);',
+                  '}',
+                  '',
+                  '#endif'
+              ]) + nl
+              open(p, 'w', encoding='utf-8').write(code)
+          " || true
 
           python3 -c "
           import os
@@ -167,9 +240,9 @@ jobs:
             CONFIG_FILE=$(find arch/arm64/configs -type f -name "*_defconfig" ! -name "defconfig" | head -n 1)
           fi
           if [ -n "$CONFIG_FILE" ]; then
-            echo "Using config file: $CONFIG_FILE"
-            CONFIG_NAME=$(basename "$CONFIG_FILE")
-            make O=out "$CONFIG_NAME" || make O=out alldefconfig
+            CONFIG_REL=${CONFIG_FILE#arch/arm64/configs/}
+            echo "Using config file: $CONFIG_FILE (target: $CONFIG_REL)"
+            make O=out "$CONFIG_REL" || make O=out alldefconfig
           else
             echo "No specific defconfig found, falling back to alldefconfig"
             make O=out alldefconfig
