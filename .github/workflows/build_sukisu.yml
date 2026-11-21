@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V238)
+name: Build Meizu 16T Pure SukiSU Kernel (V239)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU-Ultra 并修复调度、原子操作与 RC 中断宏兼容
+      - name: 3. 集成 SukiSU-Ultra 并修复类型、调度与 RC 中断宏兼容
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           
@@ -23,9 +23,14 @@ jobs:
           #ifndef _SUKISU_COMPAT_H
           #define _SUKISU_COMPAT_H
 
-          #ifndef NOHZ_BALANCE_KICK
-          #define NOHZ_BALANCE_KICK 2
+          #ifndef __ASSEMBLY__
+          struct pt_regs;
+          #ifndef _LINUX_SYSCALL_FN_T_DEFINED
+          #define _LINUX_SYSCALL_FN_T_DEFINED
+          typedef long (*syscall_fn_t)(const struct pt_regs *);
           #endif
+          #endif
+
           #ifndef FULL_THROTTLE_BOOST
           #define FULL_THROTTLE_BOOST 0
           #endif
@@ -66,7 +71,6 @@ jobs:
           #endif
           COMPAT
 
-          # 用纯 C __atomic_* 内联原语重写 atomic_ll_sc.h，彻底解决内联汇编操作数报错
           python3 -c "
           import os
           p = 'arch/arm64/include/asm/atomic_ll_sc.h'
@@ -141,24 +145,15 @@ jobs:
 
           python3 -c "
           import os
-          for r, ds, fs in os.walk('kernel/ksu'):
-              for f in fs:
-                  if f.endswith('.c'):
-                      fp = os.path.join(r, f)
-                      txt = open(fp, 'r', encoding='utf-8', errors='ignore').read()
-                      if 'sukisu_compat.h' not in txt:
-                          open(fp, 'w', encoding='utf-8').write('#include <linux/sukisu_compat.h>\n' + txt)
-          " || true
-
-          python3 -c "
-          import os
-          for p in ['kernel/sched/sched.h', 'include/linux/sched/nohz.h', 'kernel/sched/core.c']:
-              if os.path.exists(p):
-                  txt = open(p, 'r', encoding='utf-8', errors='ignore').read()
-                  if 'NOHZ_BALANCE_KICK' not in txt:
-                      guard = '#ifndef NOHZ_BALANCE_KICK\n#define NOHZ_BALANCE_KICK 2\n#endif\n'
-                      open(p, 'w', encoding='utf-8').write(guard + txt)
-                      break
+          for d in ['kernel/ksu', 'drivers/kernelsu']:
+              if os.path.exists(d):
+                  for r, ds, fs in os.walk(d):
+                      for f in fs:
+                          if f.endswith('.c'):
+                              fp = os.path.join(r, f)
+                              txt = open(fp, 'r', encoding='utf-8', errors='ignore').read()
+                              if 'sukisu_compat.h' not in txt:
+                                  open(fp, 'w', encoding='utf-8').write('#include <linux/sukisu_compat.h>\n' + txt)
           " || true
 
           python3 -c "
@@ -218,7 +213,7 @@ jobs:
               open(path, 'w', encoding='utf-8').write(content)
           " || true
           
-          python3 -c "import os, re; [open(os.path.join(r,f), 'w', encoding='utf-8').write(re.sub(r'trace_sched_.*?;', '/* removed */', re.sub(r'sched_boost\s*\([^)]*\);', '/* removed */', open(os.path.join(r,f), 'r', encoding='utf-8', errors='ignore').read()))) for r,ds,fs in os.walk('kernel/ksu') for f in fs if f.endswith(('.c','.h'))] if os.path.exists('kernel/ksu') else None" || true
+          python3 -c "import os, re; [open(os.path.join(r,f), 'w', encoding='utf-8').write(re.sub(r'trace_sched_.*?;', '/* removed */', re.sub(r'sched_boost\s*\([^)]*\);', '/* removed */', open(os.path.join(r,f), 'r', encoding='utf-8', errors='ignore').read()))) for d in ['kernel/ksu', 'drivers/kernelsu'] if os.path.exists(d) for r,ds,fs in os.walk(d) for f in fs if f.endswith(('.c','.h'))]" || true
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
       - name: 4. 注入 VDSO 桩与清理状态
@@ -240,9 +235,9 @@ jobs:
             CONFIG_FILE=$(find arch/arm64/configs -type f -name "*_defconfig" ! -name "defconfig" | head -n 1)
           fi
           if [ -n "$CONFIG_FILE" ]; then
-            CONFIG_REL=${CONFIG_FILE#arch/arm64/configs/}
-            echo "Using config file: $CONFIG_FILE (target: $CONFIG_REL)"
-            make O=out "$CONFIG_REL" || make O=out alldefconfig
+            echo "Using config file: $CONFIG_FILE"
+            CONFIG_NAME=$(basename "$CONFIG_FILE")
+            make O=out "$CONFIG_NAME" || make O=out alldefconfig
           else
             echo "No specific defconfig found, falling back to alldefconfig"
             make O=out alldefconfig
