@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V245)
+name: Build Meizu 16T Pure SukiSU Kernel (V246)
 
 on:
   workflow_dispatch:
@@ -25,10 +25,16 @@ jobs:
 
           #ifndef __ASSEMBLY__
           struct pt_regs;
+          struct ctl_table;
           #ifndef _LINUX_SYSCALL_FN_T_DEFINED
           #define _LINUX_SYSCALL_FN_T_DEFINED
           typedef long (*syscall_fn_t)(const struct pt_regs *);
           #endif
+
+          __attribute__((weak)) unsigned long nohz_flags(int cpu) { return 0; }
+          __attribute__((weak)) void trace_sched_load_balance_skip_tasks(void *a, void *b) {}
+          __attribute__((weak)) void mark_reserved(int cpu) {}
+          __attribute__((weak)) int sched_updown_migrate_handler(struct ctl_table *table, int write, void __user *buffer, size_t *lenp, loff_t *ppos) { return 0; }
           #endif
 
           #ifndef FULL_THROTTLE_BOOST
@@ -206,8 +212,9 @@ jobs:
           echo "# CONFIG_EFI_STUB is not set" >> out/.config
 
           yes "" | make O=out oldconfig
+          sed -i 's/CONFIG_EFI_STUB=y/# CONFIG_EFI_STUB is not set/g' out/.config || true
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l || true
-          make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" KCFLAGS="-w -Wno-error" CROSS_COMPILE=aarch64-linux-gnu- prepare0
+          make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" KCFLAGS="-w -Wno-error -include linux/sukisu_compat.h" CROSS_COMPILE=aarch64-linux-gnu- prepare0
 
       - name: 6. 正式全速编译内核镜像并修复 vmlinux.lds 链接脚本
         run: |
@@ -225,7 +232,7 @@ jobs:
             HOSTCFLAGS="-std=gnu89 -fcommon"
             HOSTLDFLAGS="-fcommon"
             CROSS_COMPILE=aarch64-linux-gnu-
-            KCFLAGS="-w -Wno-error -include linux/sched.h -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000"
+            KCFLAGS="-w -Wno-error -include linux/sukisu_compat.h -include linux/sched.h -DCLONE_VM=0x100 -DCLONE_FS=0x200 -DCLONE_FILES=0x400 -DCLONE_SIGHAND=0x800 -DCLONE_NEWNS=0x20000 -DCLONE_SYSVSEM=0x40000"
             CONFIG_NO_ERROR_ON_MISMATCH=y
           )
           make "${KBUILD_ARGS[@]}" || true
@@ -249,19 +256,19 @@ jobs:
           fi
           if [ -s out/arch/arm64/kernel/vmlinux.lds ]; then
             cat << 'LDSPY' > /tmp/clean_lds.py
-            import re
-            p = 'out/arch/arm64/kernel/vmlinux.lds'
-            lines = open(p, 'r', encoding='utf-8', errors='ignore').readlines()
-            clean = []
-            for l in lines:
-                s = l.strip()
-                if not s or s.startswith('#') or s.startswith(('extern ', 'typedef ', '__attribute__')):
-                    continue
-                if re.match(r'^[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*\)\s*;?$', s) and not any(k in s for k in ('ALIGN', 'ADDR', 'LOADADDR', 'CONSTANT', 'MAX', 'MIN', 'ASSERT', 'PROVIDE', 'HIDDEN')):
-                    continue
-                clean.append(l)
-            open(p, 'w', encoding='utf-8').writelines(clean)
-            LDSPY
+import re
+p = 'out/arch/arm64/kernel/vmlinux.lds'
+lines = open(p, 'r', encoding='utf-8', errors='ignore').readlines()
+clean = []
+for l in lines:
+    s = l.strip()
+    if not s or s.startswith('#') or s.startswith(('extern ', 'typedef ', '__attribute__')):
+        continue
+    if re.match(r'^[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*\)\s*;?$', s) and not any(k in s for k in ('ALIGN', 'ADDR', 'LOADADDR', 'CONSTANT', 'MAX', 'MIN', 'ASSERT', 'PROVIDE', 'HIDDEN')):
+        continue
+    clean.append(l)
+open(p, 'w', encoding='utf-8').writelines(clean)
+LDSPY
             python3 /tmp/clean_lds.py || true
             cp out/arch/arm64/kernel/vmlinux.lds arch/arm64/kernel/vmlinux.lds
           fi
