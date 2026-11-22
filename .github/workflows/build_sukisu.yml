@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V242)
+name: Build Meizu 16T Pure SukiSU Kernel (V243)
 
 on:
   workflow_dispatch:
@@ -78,7 +78,7 @@ jobs:
           p_atomic = 'arch/arm64/include/asm/atomic_ll_sc.h'
           if os.path.exists(p_atomic):
               txt = open(p_atomic, 'r', encoding='utf-8', errors='ignore').read()
-              txt = re.sub(r'"[^"]*"', '"r"', txt)
+              txt = re.sub(r'"(Ir|i|K|L|M|N)"', '"r"', txt)
               open(p_atomic, 'w', encoding='utf-8').write(txt)
 
           for d in ['kernel/ksu', 'drivers/kernelsu']:
