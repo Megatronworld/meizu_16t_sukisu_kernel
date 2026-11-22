@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V252)
+name: Build Meizu 16T Pure SukiSU Kernel (V253)
 
 on:
   workflow_dispatch:
@@ -33,6 +33,14 @@ jobs:
             sleep 3
           done
 
+          cat << 'PGTABLE' > include/linux/pgtable.h
+          #ifndef _LINUX_PGTABLE_SHIM_H
+          #define _LINUX_PGTABLE_SHIM_H
+          #include <linux/mm.h>
+          #include <asm/pgtable.h>
+          #endif
+          PGTABLE
+
           cat << 'COMPAT' > include/linux/sukisu_compat.h
           #ifndef _SUKISU_COMPAT_H
           #define _SUKISU_COMPAT_H
@@ -51,15 +59,12 @@ jobs:
           typedef long long loff_t;
           #endif
           struct pt_regs;
-          struct ctl_table;
           #ifndef _LINUX_SYSCALL_FN_T_DEFINED
           #define _LINUX_SYSCALL_FN_T_DEFINED
           typedef long (*syscall_fn_t)(const struct pt_regs *);
           #endif
 
           __attribute__((weak)) unsigned long nohz_flags(int cpu) { return 0; }
-          __attribute__((weak)) void mark_reserved(int cpu) {}
-          __attribute__((weak)) int sched_updown_migrate_handler(struct ctl_table *table, int write, void __user *buffer, size_t *lenp, loff_t *ppos) { return 0; }
           #endif
 
           #ifndef FULL_THROTTLE_BOOST
@@ -87,20 +92,6 @@ jobs:
               txt = open(p_atomic, 'r', encoding='utf-8', errors='ignore').read()
               txt = re.sub(r'"(Ir|i|K|L|M|N)"', '"r"', txt)
               open(p_atomic, 'w', encoding='utf-8').write(txt)
-
-          p_nohz = 'include/linux/sched/nohz.h'
-          if os.path.exists(p_nohz):
-              txt = open(p_nohz, 'r', encoding='utf-8', errors='ignore').read()
-              if 'NOHZ_BALANCE_KICK' not in txt:
-                  txt = txt + '\nenum { NOHZ_BALANCE_KICK = 2 };\n'
-                  open(p_nohz, 'w', encoding='utf-8').write(txt)
-
-          p_sched_core = 'kernel/sched/core.c'
-          if os.path.exists(p_sched_core):
-              txt = open(p_sched_core, 'r', encoding='utf-8', errors='ignore').read()
-              if 'NOHZ_BALANCE_KICK' not in txt:
-                  txt = 'enum { NOHZ_BALANCE_KICK = 2 };\n' + txt
-                  open(p_sched_core, 'w', encoding='utf-8').write(txt)
 
           for d in ['kernel/ksu', 'drivers/kernelsu']:
               if os.path.exists(d):
