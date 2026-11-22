@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V250)
+name: Build Meizu 16T Pure SukiSU Kernel (V251)
 
 on:
   workflow_dispatch:
@@ -9,7 +9,14 @@ jobs:
     steps:
       - name: 1. 严格检出魅族 16T sm8150 平台内核源码
         run: |
-          git clone --depth=1 https://github.com/mokee/android_kernel_meizu_sm8150.git . -b mkq-mr1
+          git config --global http.postBuffer 524288000
+          git config --global http.compression false
+          for i in 1 2 3 4 5; do
+            git clone --depth=1 https://github.com/mokee/android_kernel_meizu_sm8150.git . -b mkq-mr1 && break
+            echo "Retry kernel clone ($i/5)..."
+            rm -rf ./* .git 2>/dev/null || true
+            sleep 3
+          done
 
       - name: 2. 安装完备的交叉编译依赖
         run: |
@@ -17,7 +24,14 @@ jobs:
 
       - name: 3. 集成 SukiSU-Ultra 并修复类型、原子操作、调度与 RC 中断宏兼容
         run: |
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
+          git config --global http.postBuffer 524288000
+          git config --global http.compression false
+          for i in 1 2 3 4 5; do
+            rm -rf KernelSU drivers/kernelsu kernel/ksu 2>/dev/null || true
+            curl -LSs --retry 3 --retry-delay 2 "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main && break
+            echo "Retry SukiSU setup ($i/5)..."
+            sleep 3
+          done
 
           cat << 'COMPAT' > include/linux/sukisu_compat.h
           #ifndef _SUKISU_COMPAT_H
