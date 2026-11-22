@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V251)
+name: Build Meizu 16T Pure SukiSU Kernel (V252)
 
 on:
   workflow_dispatch:
@@ -58,7 +58,6 @@ jobs:
           #endif
 
           __attribute__((weak)) unsigned long nohz_flags(int cpu) { return 0; }
-          __attribute__((weak)) void trace_sched_load_balance_skip_tasks(void *a, void *b) {}
           __attribute__((weak)) void mark_reserved(int cpu) {}
           __attribute__((weak)) int sched_updown_migrate_handler(struct ctl_table *table, int write, void __user *buffer, size_t *lenp, loff_t *ppos) { return 0; }
           #endif
