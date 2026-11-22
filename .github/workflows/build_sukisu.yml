@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V244)
+name: Build Meizu 16T Pure SukiSU Kernel (V245)
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
       - name: 3. 集成 SukiSU-Ultra 并修复类型、原子操作、调度与 RC 中断宏兼容
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
-          
+
           cat << 'COMPAT' > include/linux/sukisu_compat.h
           #ifndef _SUKISU_COMPAT_H
           #define _SUKISU_COMPAT_H
@@ -191,7 +191,7 @@ jobs:
             echo "No specific defconfig found, falling back to alldefconfig"
             make O=out alldefconfig
           fi
-          
+
           sed -i 's/# CONFIG_KPROBES is not set/CONFIG_KPROBES=y/g' out/.config || true
           sed -i 's/# CONFIG_KRETPROBES is not set/CONFIG_KRETPROBES=y/g' out/.config || true
           sed -i 's/# CONFIG_HAVE_SYSCALL_TRACEPOINTS is not set/CONFIG_HAVE_SYSCALL_TRACEPOINTS=y/g' out/.config || true
@@ -204,12 +204,9 @@ jobs:
           echo "CONFIG_GCC_PLUGINS=n" >> out/.config
           echo "CONFIG_VDSO=n" >> out/.config
           echo "# CONFIG_EFI_STUB is not set" >> out/.config
-          
+
           yes "" | make O=out oldconfig
-          
-          # 修复主机 dtc 符号重定义
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l || true
-          
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" KCFLAGS="-w -Wno-error" CROSS_COMPILE=aarch64-linux-gnu- prepare0
 
       - name: 6. 正式全速编译内核镜像并修复 vmlinux.lds 链接脚本
@@ -252,19 +249,19 @@ jobs:
           fi
           if [ -s out/arch/arm64/kernel/vmlinux.lds ]; then
             cat << 'LDSPY' > /tmp/clean_lds.py
-import re
-p = 'out/arch/arm64/kernel/vmlinux.lds'
-lines = open(p, 'r', encoding='utf-8', errors='ignore').readlines()
-clean = []
-for l in lines:
-    s = l.strip()
-    if not s or s.startswith('#') or s.startswith(('extern ', 'typedef ', '__attribute__')):
-        continue
-    if re.match(r'^[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*\)\s*;?$', s) and not any(k in s for k in ('ALIGN', 'ADDR', 'LOADADDR', 'CONSTANT', 'MAX', 'MIN', 'ASSERT', 'PROVIDE', 'HIDDEN')):
-        continue
-    clean.append(l)
-open(p, 'w', encoding='utf-8').writelines(clean)
-LDSPY
+            import re
+            p = 'out/arch/arm64/kernel/vmlinux.lds'
+            lines = open(p, 'r', encoding='utf-8', errors='ignore').readlines()
+            clean = []
+            for l in lines:
+                s = l.strip()
+                if not s or s.startswith('#') or s.startswith(('extern ', 'typedef ', '__attribute__')):
+                    continue
+                if re.match(r'^[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*\)\s*;?$', s) and not any(k in s for k in ('ALIGN', 'ADDR', 'LOADADDR', 'CONSTANT', 'MAX', 'MIN', 'ASSERT', 'PROVIDE', 'HIDDEN')):
+                    continue
+                clean.append(l)
+            open(p, 'w', encoding='utf-8').writelines(clean)
+            LDSPY
             python3 /tmp/clean_lds.py || true
             cp out/arch/arm64/kernel/vmlinux.lds arch/arm64/kernel/vmlinux.lds
           fi
