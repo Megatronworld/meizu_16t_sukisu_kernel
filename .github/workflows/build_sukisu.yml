@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V249)
+name: Build Meizu 16T Pure SukiSU Kernel (V250)
 
 on:
   workflow_dispatch:
@@ -57,30 +57,6 @@ jobs:
           #endif
           #ifndef NO_BOOST
           #define NO_BOOST 0
-          #endif
-          #ifndef IRQ_TYPE_NONE
-          #define IRQ_TYPE_NONE 0
-          #endif
-          #ifndef IRQ_TYPE_EDGE_RISING
-          #define IRQ_TYPE_EDGE_RISING 1
-          #endif
-          #ifndef IRQ_TYPE_EDGE_FALLING
-          #define IRQ_TYPE_EDGE_FALLING 2
-          #endif
-          #ifndef IRQ_TYPE_EDGE_BOTH
-          #define IRQ_TYPE_EDGE_BOTH 3
-          #endif
-          #ifndef IRQ_TYPE_LEVEL_HIGH
-          #define IRQ_TYPE_LEVEL_HIGH 4
-          #endif
-          #ifndef IRQ_TYPE_LEVEL_LOW
-          #define IRQ_TYPE_LEVEL_LOW 8
-          #endif
-          #ifndef IRQ_TYPE_LEVEL_MASK
-          #define IRQ_TYPE_LEVEL_MASK (IRQ_TYPE_LEVEL_LOW | IRQ_TYPE_LEVEL_HIGH)
-          #endif
-          #ifndef IRQ_TYPE_SENSE_MASK
-          #define IRQ_TYPE_SENSE_MASK 0x0000000f
           #endif
           #ifndef EFI_HAVE_STUB
           #define EFI_HAVE_STUB 1
@@ -146,16 +122,6 @@ jobs:
                           txt = open(fp, 'r', encoding='utf-8', errors='ignore').read()
                           if 'FULL_THROTTLE_BOOST' in txt and boost_def not in txt:
                               open(fp, 'w', encoding='utf-8').write(boost_def + txt)
-
-          guard_rc = '#ifndef IRQ_TYPE_LEVEL_HIGH\n#define IRQ_TYPE_LEVEL_HIGH 4\n#endif\n'
-          if os.path.exists('drivers/media/rc'):
-              for r, ds, fs in os.walk('drivers/media/rc'):
-                  for f in fs:
-                      if f.endswith(('.c', '.h')):
-                          fp = os.path.join(r, f)
-                          txt = open(fp, 'r', encoding='utf-8', errors='ignore').read()
-                          if 'IRQ_TYPE_LEVEL_HIGH' in txt and 'define IRQ_TYPE_LEVEL_HIGH' not in txt:
-                              open(fp, 'w', encoding='utf-8').write(guard_rc + txt)
 
           p_efi = 'drivers/firmware/efi/libstub/arm64-stub.c'
           if os.path.exists(p_efi):
