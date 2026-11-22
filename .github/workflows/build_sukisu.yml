@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V243)
+name: Build Meizu 16T Pure SukiSU Kernel (V244)
 
 on:
   workflow_dispatch:
@@ -80,6 +80,20 @@ jobs:
               txt = open(p_atomic, 'r', encoding='utf-8', errors='ignore').read()
               txt = re.sub(r'"(Ir|i|K|L|M|N)"', '"r"', txt)
               open(p_atomic, 'w', encoding='utf-8').write(txt)
+
+          p_nohz = 'include/linux/sched/nohz.h'
+          if os.path.exists(p_nohz):
+              txt = open(p_nohz, 'r', encoding='utf-8', errors='ignore').read()
+              if 'NOHZ_BALANCE_KICK' not in txt:
+                  txt = txt + '\nenum { NOHZ_BALANCE_KICK = 2 };\n'
+                  open(p_nohz, 'w', encoding='utf-8').write(txt)
+
+          p_sched_core = 'kernel/sched/core.c'
+          if os.path.exists(p_sched_core):
+              txt = open(p_sched_core, 'r', encoding='utf-8', errors='ignore').read()
+              if 'NOHZ_BALANCE_KICK' not in txt:
+                  txt = 'enum { NOHZ_BALANCE_KICK = 2 };\n' + txt
+                  open(p_sched_core, 'w', encoding='utf-8').write(txt)
 
           for d in ['kernel/ksu', 'drivers/kernelsu']:
               if os.path.exists(d):
@@ -238,19 +252,19 @@ jobs:
           fi
           if [ -s out/arch/arm64/kernel/vmlinux.lds ]; then
             cat << 'LDSPY' > /tmp/clean_lds.py
-            import re
-            p = 'out/arch/arm64/kernel/vmlinux.lds'
-            lines = open(p, 'r', encoding='utf-8', errors='ignore').readlines()
-            clean = []
-            for l in lines:
-                s = l.strip()
-                if not s or s.startswith('#') or s.startswith(('extern ', 'typedef ', '__attribute__')):
-                    continue
-                if re.match(r'^[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*\)\s*;?$', s) and not any(k in s for k in ('ALIGN', 'ADDR', 'LOADADDR', 'CONSTANT', 'MAX', 'MIN', 'ASSERT', 'PROVIDE', 'HIDDEN')):
-                    continue
-                clean.append(l)
-            open(p, 'w', encoding='utf-8').writelines(clean)
-            LDSPY
+import re
+p = 'out/arch/arm64/kernel/vmlinux.lds'
+lines = open(p, 'r', encoding='utf-8', errors='ignore').readlines()
+clean = []
+for l in lines:
+    s = l.strip()
+    if not s or s.startswith('#') or s.startswith(('extern ', 'typedef ', '__attribute__')):
+        continue
+    if re.match(r'^[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*\)\s*;?$', s) and not any(k in s for k in ('ALIGN', 'ADDR', 'LOADADDR', 'CONSTANT', 'MAX', 'MIN', 'ASSERT', 'PROVIDE', 'HIDDEN')):
+        continue
+    clean.append(l)
+open(p, 'w', encoding='utf-8').writelines(clean)
+LDSPY
             python3 /tmp/clean_lds.py || true
             cp out/arch/arm64/kernel/vmlinux.lds arch/arm64/kernel/vmlinux.lds
           fi
