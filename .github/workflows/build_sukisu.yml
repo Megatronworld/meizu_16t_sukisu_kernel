@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V247)
+name: Build Meizu 16T Pure SukiSU Kernel (V248)
 
 on:
   workflow_dispatch:
@@ -24,6 +24,18 @@ jobs:
           #define _SUKISU_COMPAT_H
 
           #ifndef __ASSEMBLY__
+          #include <linux/types.h>
+          #ifndef __user
+          #define __user
+          #endif
+          #ifndef _SIZE_T
+          #define _SIZE_T
+          typedef __SIZE_TYPE__ size_t;
+          #endif
+          #ifndef _LOFF_T
+          #define _LOFF_T
+          typedef long long loff_t;
+          #endif
           struct pt_regs;
           struct ctl_table;
           #ifndef _LINUX_SYSCALL_FN_T_DEFINED
@@ -190,9 +202,9 @@ jobs:
             CONFIG_FILE=$(find arch/arm64/configs -type f -name "*_defconfig" ! -name "defconfig" | head -n 1)
           fi
           if [ -n "$CONFIG_FILE" ]; then
-            echo "Using config file: $CONFIG_FILE"
-            CONFIG_NAME=$(basename "$CONFIG_FILE")
-            make O=out "$CONFIG_NAME" || make O=out alldefconfig
+            CONFIG_REL=${CONFIG_FILE#arch/arm64/configs/}
+            echo "Using config file: $CONFIG_FILE (target: $CONFIG_REL)"
+            make O=out "$CONFIG_REL" || make O=out alldefconfig
           else
             echo "No specific defconfig found, falling back to alldefconfig"
             make O=out alldefconfig
