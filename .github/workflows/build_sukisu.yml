@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V254)
+name: Build Meizu 16T Pure SukiSU Kernel (V255)
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU 并修复类型、原子操作、调度与链表兼容
+      - name: 3. 集成 SukiSU 并修复类型、原子操作、调度与 LSM 链表兼容
         run: |
           git config --global http.postBuffer 524288000
           git config --global http.compression false
@@ -96,10 +96,7 @@ jobs:
           p_lsm = 'drivers/kernelsu/hook/lsm_hook.c'
           if os.path.exists(p_lsm):
               txt = open(p_lsm, 'r', encoding='utf-8', errors='ignore').read()
-              txt = txt.replace('.pprev = &head->first;', '.prev = &head->next;')
-              txt = txt.replace('.pprev = &head->next;', '.prev = &head->next;')
-              txt = re.sub(r'\.pprev\b', '.prev', txt)
-              txt = re.sub(r'->first\b', '->next', txt)
+              txt = re.sub(r'\bhead->next\b', 'head->first', txt)
               open(p_lsm, 'w', encoding='utf-8').write(txt)
 
           for d in ['kernel/ksu', 'drivers/kernelsu']:
