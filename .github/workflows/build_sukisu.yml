@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V248)
+name: Build Meizu 16T Pure SukiSU Kernel (V249)
 
 on:
   workflow_dispatch:
@@ -216,15 +216,22 @@ jobs:
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS=n/g' out/.config || true
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO=n/g' out/.config || true
           sed -i 's/CONFIG_EFI_STUB=y/# CONFIG_EFI_STUB is not set/g' out/.config || true
+          sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g' out/.config || true
+          sed -i 's/CONFIG_CC_STACKPROTECTOR_REGULAR=y/# CONFIG_CC_STACKPROTECTOR_REGULAR is not set/g' out/.config || true
           echo "CONFIG_KPROBES=y" >> out/.config
           echo "CONFIG_KRETPROBES=y" >> out/.config
           echo "CONFIG_HAVE_SYSCALL_TRACEPOINTS=y" >> out/.config
           echo "CONFIG_GCC_PLUGINS=n" >> out/.config
           echo "CONFIG_VDSO=n" >> out/.config
           echo "# CONFIG_EFI_STUB is not set" >> out/.config
+          echo "# CONFIG_CC_STACKPROTECTOR_STRONG is not set" >> out/.config
+          echo "# CONFIG_CC_STACKPROTECTOR_REGULAR is not set" >> out/.config
+          echo "CONFIG_CC_STACKPROTECTOR_NONE=y" >> out/.config
 
           yes "" | make O=out oldconfig
           sed -i 's/CONFIG_EFI_STUB=y/# CONFIG_EFI_STUB is not set/g' out/.config || true
+          sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g' out/.config || true
+          sed -i 's/CONFIG_CC_STACKPROTECTOR_REGULAR=y/# CONFIG_CC_STACKPROTECTOR_REGULAR is not set/g' out/.config || true
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l || true
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" KCFLAGS="-w -Wno-error -include linux/sukisu_compat.h" CROSS_COMPILE=aarch64-linux-gnu- prepare0
 
