@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V255)
+name: Build Meizu 16T Pure SukiSU Kernel (V256)
 
 on:
   workflow_dispatch:
@@ -96,7 +96,8 @@ jobs:
           p_lsm = 'drivers/kernelsu/hook/lsm_hook.c'
           if os.path.exists(p_lsm):
               txt = open(p_lsm, 'r', encoding='utf-8', errors='ignore').read()
-              txt = re.sub(r'\bhead->next\b', 'head->first', txt)
+              txt = txt.replace('hook->list.list.pprev = &head->first;', 'hook->list.list.prev = (struct list_head *)&head->first;')
+              txt = txt.replace('slot = (void **)&hook->list.head->first;', 'slot = (void **)&hook->list.head->next;')
               open(p_lsm, 'w', encoding='utf-8').write(txt)
 
           for d in ['kernel/ksu', 'drivers/kernelsu']:
