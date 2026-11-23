@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V264)
+name: Build Meizu 16T Pure SukiSU Kernel (V265)
 
 on:
   workflow_dispatch:
@@ -75,6 +75,10 @@ jobs:
           #ifndef __HAVE_ARCH___POLL_T
           #define __HAVE_ARCH___POLL_T
           typedef unsigned int __poll_t;
+          #endif
+
+          #ifndef SECCOMP_ARCH_NATIVE_NR
+          #define SECCOMP_ARCH_NATIVE_NR 512
           #endif
 
           /* EPOLL* -> POLL* 兼容映射（Linux 4.14 轮询接口） */
@@ -172,7 +176,7 @@ jobs:
           typedef long (*syscall_fn_t)(const struct pt_regs *);
           #endif
 
-          /* 高版本 GCC / FORTIFY / 调度 / 轮询符号弱兜底 */
+          /* 高版本 GCC / FORTIFY / 调度符号弱兜底 */
           __attribute__((weak)) unsigned long nohz_flags(int cpu) { return 0; }
           __attribute__((weak)) void __bad_copy_from(void) {}
           __attribute__((weak)) void __bad_copy_to(void) {}
@@ -182,10 +186,6 @@ jobs:
           __attribute__((weak)) void __write_overflow2(void) {}
           __attribute__((weak)) void __read_overflow2_field(void) {}
           __attribute__((weak)) void __write_overflow2_field(void) {}
-          __attribute__((weak)) ssize_t strscpy(char *dest, const char *src, size_t count) {
-              if (!count) return -E2BIG;
-              return strlcpy(dest, src, count);
-          }
           #endif
 
           #ifndef FULL_THROTTLE_BOOST
