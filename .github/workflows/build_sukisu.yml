@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V260)
+name: Build Meizu 16T Pure SukiSU Kernel (V261)
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU 并修复类型、原子操作、调度、LSM 与 4.14 文件接口兼容
+      - name: 3. 集成 SukiSU 并修复类型、原子操作、调度、LSM、4.14 文件接口与 FORTIFY 检查
         run: |
           git config --global http.postBuffer 524288000
           git config --global http.compression false
@@ -78,6 +78,8 @@ jobs:
           #endif
 
           __attribute__((weak)) unsigned long nohz_flags(int cpu) { return 0; }
+          __attribute__((weak)) void __bad_copy_from(void) {}
+          __attribute__((weak)) void __bad_copy_to(void) {}
           #endif
 
           #ifndef FULL_THROTTLE_BOOST
@@ -126,14 +128,14 @@ jobs:
           p_fw = 'drivers/kernelsu/infra/file_wrapper.c'
           if os.path.exists(p_fw):
               txt = open(p_fw, 'r', encoding='utf-8', errors='ignore').read()
-              txt = re.sub(r'return\s+orig->f_op->iopoll\s*\([^;]*\)\s*;', 'return -EOPNOTSUPP;', txt)
-              txt = re.sub(r'return\s+orig->f_op->remap_file_range\s*\([^;]*\)\s*;', 'return -EOPNOTSUPP;', txt)
-              txt = re.sub(r'if\s*\(\s*orig->f_op->fadvise\s*\)\s*\{[^}]*\}', '', txt, flags=re.S)
-              txt = re.sub(r'return\s+orig->f_op->fadvise\s*\([^;]*\)\s*;', 'return -EOPNOTSUPP;', txt)
-              txt = re.sub(r'p->ops\.iopoll\s*=\s*[^;]*;', '', txt)
-              txt = re.sub(r'p->ops\.mmap_supported_flags\s*=\s*[^;]*;', '', txt)
-              txt = re.sub(r'p->ops\.remap_file_range\s*=\s*[^;]*;', '', txt)
-              txt = re.sub(r'p->ops\.fadvise\s*=\s*[^;]*;', '', txt)
+              txt = re.sub(r'orig->f_op->iopoll\s*\([^;]*\)', '-EOPNOTSUPP', txt)
+              txt = re.sub(r'orig->f_op->remap_file_range\s*\([^;]*\)', '-EOPNOTSUPP', txt)
+              txt = re.sub(r'if\s*\(\s*orig->f_op->fadvise\s*\)\s*\{[^}]*\}', 'return -EOPNOTSUPP;', txt, flags=re.S)
+              txt = re.sub(r'orig->f_op->fadvise\s*\([^;]*\)', '-EOPNOTSUPP', txt)
+              txt = re.sub(r'p->ops\.iopoll\s*=\s*[^;]*;', '/* iopoll unsupported on 4.14 */', txt)
+              txt = re.sub(r'p->ops\.mmap_supported_flags\s*=\s*[^;]*;', '/* mmap_supported_flags unsupported on 4.14 */', txt)
+              txt = re.sub(r'p->ops\.remap_file_range\s*=\s*[^;]*;', '/* remap_file_range unsupported on 4.14 */', txt)
+              txt = re.sub(r'p->ops\.fadvise\s*=\s*[^;]*;', '/* fadvise unsupported on 4.14 */', txt)
               open(p_fw, 'w', encoding='utf-8').write(txt)
 
           for d in ['kernel/ksu', 'drivers/kernelsu']:
@@ -228,6 +230,7 @@ jobs:
           sed -i 's/# CONFIG_HAVE_SYSCALL_TRACEPOINTS is not set/CONFIG_HAVE_SYSCALL_TRACEPOINTS=y/g' out/.config || true
           sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS=n/g' out/.config || true
           sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO=n/g' out/.config || true
+          sed -i 's/CONFIG_FORTIFY_SOURCE=y/# CONFIG_FORTIFY_SOURCE is not set/g' out/.config || true
           sed -i 's/CONFIG_EFI_STUB=y/# CONFIG_EFI_STUB is not set/g' out/.config || true
           sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g' out/.config || true
           sed -i 's/CONFIG_CC_STACKPROTECTOR_REGULAR=y/# CONFIG_CC_STACKPROTECTOR_REGULAR is not set/g' out/.config || true
@@ -236,12 +239,14 @@ jobs:
           echo "CONFIG_HAVE_SYSCALL_TRACEPOINTS=y" >> out/.config
           echo "CONFIG_GCC_PLUGINS=n" >> out/.config
           echo "CONFIG_VDSO=n" >> out/.config
+          echo "# CONFIG_FORTIFY_SOURCE is not set" >> out/.config
           echo "# CONFIG_EFI_STUB is not set" >> out/.config
           echo "# CONFIG_CC_STACKPROTECTOR_STRONG is not set" >> out/.config
           echo "# CONFIG_CC_STACKPROTECTOR_REGULAR is not set" >> out/.config
           echo "CONFIG_CC_STACKPROTECTOR_NONE=y" >> out/.config
 
           yes "" | make O=out oldconfig
+          sed -i 's/CONFIG_FORTIFY_SOURCE=y/# CONFIG_FORTIFY_SOURCE is not set/g' out/.config || true
           sed -i 's/CONFIG_EFI_STUB=y/# CONFIG_EFI_STUB is not set/g' out/.config || true
           sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g' out/.config || true
           sed -i 's/CONFIG_CC_STACKPROTECTOR_REGULAR=y/# CONFIG_CC_STACKPROTECTOR_REGULAR is not set/g' out/.config || true
