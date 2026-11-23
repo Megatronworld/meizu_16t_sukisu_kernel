@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V261)
+name: Build Meizu 16T Pure SukiSU Kernel (V263)
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU 并修复类型、原子操作、调度、LSM、4.14 文件接口与 FORTIFY 检查
+      - name: 3. 集成 SukiSU 并批量修复 4.14 轮询/文件/内存/调度/LSM/FORTIFY/GCC15 兼容问题
         run: |
           git config --global http.postBuffer 524288000
           git config --global http.compression false
@@ -53,6 +53,9 @@ jobs:
 
           #ifndef __ASSEMBLY__
           #include <linux/types.h>
+          #include <linux/poll.h>
+          #include <linux/string.h>
+
           #ifndef __user
           #define __user
           #endif
@@ -68,18 +71,85 @@ jobs:
           #define __HAVE_ARCH___POLL_T
           typedef unsigned int __poll_t;
           #endif
+
+          /* EPOLL* -> POLL* 兼容映射（Linux 4.14 轮询接口） */
+          #ifndef EPOLLIN
+          #define EPOLLIN POLLIN
+          #endif
+          #ifndef EPOLLPRI
+          #define EPOLLPRI POLLPRI
+          #endif
+          #ifndef EPOLLOUT
+          #define EPOLLOUT POLLOUT
+          #endif
+          #ifndef EPOLLERR
+          #define EPOLLERR POLLERR
+          #endif
+          #ifndef EPOLLHUP
+          #define EPOLLHUP POLLHUP
+          #endif
+          #ifndef EPOLLRDNORM
+          #define EPOLLRDNORM POLLRDNORM
+          #endif
+          #ifndef EPOLLRDBAND
+          #define EPOLLRDBAND POLLRDBAND
+          #endif
+          #ifndef EPOLLWRNORM
+          #define EPOLLWRNORM POLLWRNORM
+          #endif
+          #ifndef EPOLLWRBAND
+          #define EPOLLWRBAND POLLWRBAND
+          #endif
+          #ifndef EPOLLMSG
+          #define EPOLLMSG POLLMSG
+          #endif
+          #ifndef EPOLLET
+          #define EPOLLET (1U << 31)
+          #endif
+          #ifndef EPOLLONESHOT
+          #define EPOLLONESHOT (1U << 30)
+          #endif
+          #ifndef EPOLLWAKEUP
+          #define EPOLLWAKEUP (1U << 29)
+          #endif
+          #ifndef EPOLLEXCLUSIVE
+          #define EPOLLEXCLUSIVE (1U << 28)
+          #endif
+
+          /* 常见 5.x+ 文件/内存标志兜底 */
           #ifndef REMAP_FILE_DEDUP
           #define REMAP_FILE_DEDUP (1 << 0)
           #endif
+          #ifndef FMODE_NOWAIT
+          #define FMODE_NOWAIT 0
+          #endif
+          #ifndef FMODE_UNSIGNED_OFFSET
+          #define FMODE_UNSIGNED_OFFSET 0
+          #endif
+          #ifndef GFP_KERNEL_ACCOUNT
+          #define GFP_KERNEL_ACCOUNT GFP_KERNEL
+          #endif
+
           struct pt_regs;
           #ifndef _LINUX_SYSCALL_FN_T_DEFINED
           #define _LINUX_SYSCALL_FN_T_DEFINED
           typedef long (*syscall_fn_t)(const struct pt_regs *);
           #endif
 
+          /* 高版本 GCC / FORTIFY / 调度 / 轮询符号弱兜底 */
           __attribute__((weak)) unsigned long nohz_flags(int cpu) { return 0; }
           __attribute__((weak)) void __bad_copy_from(void) {}
           __attribute__((weak)) void __bad_copy_to(void) {}
+          __attribute__((weak)) void __read_overflow(void) {}
+          __attribute__((weak)) void __write_overflow(void) {}
+          __attribute__((weak)) void __read_overflow2(void) {}
+          __attribute__((weak)) void __write_overflow2(void) {}
+          __attribute__((weak)) void __read_overflow2_field(void) {}
+          __attribute__((weak)) void __write_overflow2_field(void) {}
+          __attribute__((weak)) ssize_t strscpy(char *dest, const char *src, size_t count) {
+              if (!count) return -E2BIG;
+              return strlcpy(dest, src, count);
+          }
           #endif
 
           #ifndef FULL_THROTTLE_BOOST
@@ -102,95 +172,96 @@ jobs:
           import os
           import re
 
-          p_atomic = 'arch/arm64/include/asm/atomic_ll_sc.h'
-          if os.path.exists(p_atomic):
-              txt = open(p_atomic, 'r', encoding='utf-8', errors='ignore').read()
-              txt = re.sub(r'"(Ir|i|K|L|M|N)"', '"r"', txt)
-              open(p_atomic, 'w', encoding='utf-8').write(txt)
+          def patch_file(path, fn):
+              if not os.path.exists(path):
+                  return
+              txt = open(path, 'r', encoding='utf-8', errors='ignore').read()
+              new_txt = fn(txt)
+              if new_txt != txt:
+                  open(path, 'w', encoding='utf-8').write(new_txt)
 
-          p_lsm = 'drivers/kernelsu/hook/lsm_hook.c'
-          if os.path.exists(p_lsm):
-              txt = open(p_lsm, 'r', encoding='utf-8', errors='ignore').read()
-              txt = txt.replace('hook->list.list.pprev = &head->first;', 'hook->list.list.prev = (struct list_head *)&head->first;')
-              txt = txt.replace('slot = (void **)&hook->list.head->first;', 'slot = (void **)&hook->list.head->next;')
-              txt = re.sub(
+          # 1. ARM64 原子操作约束兼容
+          patch_file('arch/arm64/include/asm/atomic_ll_sc.h', lambda t: re.sub(r'"(Ir|i|K|L|M|N)"', '"r"', t))
+
+          # 2. 4.14 LSM security_hook_list 链表结构适配
+          def fix_lsm(t):
+              t = t.replace('hook->list.list.pprev = &head->first;', 'hook->list.list.prev = (struct list_head *)&head->first;')
+              t = t.replace('slot = (void **)&hook->list.head->first;', 'slot = (void **)&hook->list.head->next;')
+              t = re.sub(
                   r'hlist_for_each_entry\s*\(\s*entry\s*,\s*head\s*,\s*list\s*\)',
                   'list_for_each_entry(entry, (struct list_head *)(head), list)',
-                  txt
+                  t
               )
-              txt = re.sub(
+              t = re.sub(
                   r'hlist_entry\s*\(\s*head->first\s*,\s*struct\s+security_hook_list\s*,\s*list\s*\)',
                   'list_first_entry_or_null((struct list_head *)(head), struct security_hook_list, list)',
-                  txt
+                  t
               )
-              open(p_lsm, 'w', encoding='utf-8').write(txt)
+              return t
+          patch_file('drivers/kernelsu/hook/lsm_hook.c', fix_lsm)
 
-          p_fw = 'drivers/kernelsu/infra/file_wrapper.c'
-          if os.path.exists(p_fw):
-              txt = open(p_fw, 'r', encoding='utf-8', errors='ignore').read()
-              txt = re.sub(r'orig->f_op->iopoll\s*\([^;]*\)', '-EOPNOTSUPP', txt)
-              txt = re.sub(r'orig->f_op->remap_file_range\s*\([^;]*\)', '-EOPNOTSUPP', txt)
-              txt = re.sub(r'if\s*\(\s*orig->f_op->fadvise\s*\)\s*\{[^}]*\}', 'return -EOPNOTSUPP;', txt, flags=re.S)
-              txt = re.sub(r'orig->f_op->fadvise\s*\([^;]*\)', '-EOPNOTSUPP', txt)
-              txt = re.sub(r'p->ops\.iopoll\s*=\s*[^;]*;', '/* iopoll unsupported on 4.14 */', txt)
-              txt = re.sub(r'p->ops\.mmap_supported_flags\s*=\s*[^;]*;', '/* mmap_supported_flags unsupported on 4.14 */', txt)
-              txt = re.sub(r'p->ops\.remap_file_range\s*=\s*[^;]*;', '/* remap_file_range unsupported on 4.14 */', txt)
-              txt = re.sub(r'p->ops\.fadvise\s*=\s*[^;]*;', '/* fadvise unsupported on 4.14 */', txt)
-              open(p_fw, 'w', encoding='utf-8').write(txt)
+          # 3. 4.14 file_operations 缺失字段（iopoll / remap_file_range / fadvise / mmap_supported_flags）兜底
+          def fix_fw(t):
+              t = re.sub(r'orig->f_op->iopoll\s*\([^;]*\)', '-EOPNOTSUPP', t)
+              t = re.sub(r'orig->f_op->remap_file_range\s*\([^;]*\)', '-EOPNOTSUPP', t)
+              t = re.sub(r'if\s*\(\s*orig->f_op->fadvise\s*\)\s*\{[^}]*\}', 'return -EOPNOTSUPP;', t, flags=re.S)
+              t = re.sub(r'orig->f_op->fadvise\s*\([^;]*\)', '-EOPNOTSUPP', t)
+              t = re.sub(r'p->ops\.iopoll\s*=\s*[^;]*;', '/* iopoll unsupported on 4.14 */', t)
+              t = re.sub(r'p->ops\.mmap_supported_flags\s*=\s*[^;]*;', '/* mmap_supported_flags unsupported on 4.14 */', t)
+              t = re.sub(r'p->ops\.remap_file_range\s*=\s*[^;]*;', '/* remap_file_range unsupported on 4.14 */', t)
+              t = re.sub(r'p->ops\.fadvise\s*=\s*[^;]*;', '/* fadvise unsupported on 4.14 */', t)
+              return t
+          patch_file('drivers/kernelsu/infra/file_wrapper.c', fix_fw)
 
+          # 4. 批量为 SukiSU 目录注入 sukisu_compat.h 并清理高版本内核独有 trace/boost 符号
           for d in ['kernel/ksu', 'drivers/kernelsu']:
               if os.path.exists(d):
                   for r, ds, fs in os.walk(d):
                       for f in fs:
+                          fp = os.path.join(r, f)
                           if f.endswith('.c'):
-                              fp = os.path.join(r, f)
-                              txt = open(fp, 'r', encoding='utf-8', errors='ignore').read()
-                              if 'sukisu_compat.h' not in txt:
-                                  open(fp, 'w', encoding='utf-8').write('#include <linux/sukisu_compat.h>\n' + txt)
+                              def add_inc(t):
+                                  return ('#include <linux/sukisu_compat.h>\n' + t) if 'sukisu_compat.h' not in t else t
+                              patch_file(fp, add_inc)
                           if f.endswith(('.c', '.h')):
-                              fp = os.path.join(r, f)
-                              txt = open(fp, 'r', encoding='utf-8', errors='ignore').read()
-                              txt = re.sub(r'trace_sched_.*?;', '/* removed */', txt)
-                              txt = re.sub(r'sched_boost\s*\([^)]*\);', '/* removed */', txt)
-                              open(fp, 'w', encoding='utf-8').write(txt)
+                              def clean_ksu(t):
+                                  t = re.sub(r'trace_sched_.*?;', '/* removed */', t)
+                                  t = re.sub(r'sched_boost\s*\([^)]*\);', '/* removed */', t)
+                                  return t
+                              patch_file(fp, clean_ksu)
 
+          # 5. 调度器 FULL_THROTTLE_BOOST 与 sched_boost 左值赋值兼容
           boost_def = '#undef FULL_THROTTLE_BOOST\n#define FULL_THROTTLE_BOOST 0\n'
           for p in ['kernel/sched/rt.c', 'kernel/sched/fair.c']:
-              if os.path.exists(p):
-                  txt = open(p, 'r', encoding='utf-8', errors='ignore').read()
-                  if boost_def not in txt:
-                      txt = boost_def + txt
-                  txt = re.sub(r'sched_boost\s*\(\)\s*=\s*FULL_THROTTLE_BOOST\s*;', '/* removed invalid lvalue */', txt)
-                  open(p, 'w', encoding='utf-8').write(txt)
+              def fix_sched(t):
+                  if boost_def not in t:
+                      t = boost_def + t
+                  t = re.sub(r'sched_boost\s*\(\)\s*=\s*FULL_THROTTLE_BOOST\s*;', '/* removed invalid lvalue */', t)
+                  return t
+              patch_file(p, fix_sched)
 
           if os.path.exists('kernel/sched'):
               for r, ds, fs in os.walk('kernel/sched'):
                   for f in fs:
                       if f.endswith('.c') and f not in ('rt.c', 'fair.c'):
                           fp = os.path.join(r, f)
-                          txt = open(fp, 'r', encoding='utf-8', errors='ignore').read()
-                          if 'FULL_THROTTLE_BOOST' in txt and boost_def not in txt:
-                              open(fp, 'w', encoding='utf-8').write(boost_def + txt)
+                          patch_file(fp, lambda t: (boost_def + t) if ('FULL_THROTTLE_BOOST' in t and boost_def not in t) else t)
 
-          p_efi = 'drivers/firmware/efi/libstub/arm64-stub.c'
-          if os.path.exists(p_efi):
-              lines = open(p_efi, 'r', encoding='utf-8', errors='ignore').readlines()
-              out_lines = []
-              has_guard = any('TEXT_OFFSET' in l and ('#ifndef' in l or '#define' in l) for l in lines)
-              if not has_guard:
-                  out_lines.append('#ifndef TEXT_OFFSET\n#define TEXT_OFFSET 0\n#endif\n')
+          # 6. EFI stub TEXT_OFFSET 与 mm/huge_memory.c 枚举类型转换兼容
+          def fix_efi(t):
+              lines = t.splitlines(True)
+              out = []
+              if not any('TEXT_OFFSET' in l and ('#ifndef' in l or '#define' in l) for l in lines):
+                  out.append('#ifndef TEXT_OFFSET\n#define TEXT_OFFSET 0\n#endif\n')
               for l in lines:
                   if l.lstrip().startswith('#'):
-                      out_lines.append(l)
+                      out.append(l)
                   else:
-                      out_lines.append(re.sub(r'\bTEXT_OFFSET\b', '0', l))
-              open(p_efi, 'w', encoding='utf-8').writelines(out_lines)
+                      out.append(re.sub(r'\bTEXT_OFFSET\b', '0', l))
+              return ''.join(out)
+          patch_file('drivers/firmware/efi/libstub/arm64-stub.c', fix_efi)
 
-          p_huge = 'mm/huge_memory.c'
-          if os.path.exists(p_huge):
-              content = open(p_huge, 'r', encoding='utf-8', errors='ignore').read()
-              content = content.replace('try_to_unmap(page, ttu_flags);', 'try_to_unmap(page, (enum ttu_flags)ttu_flags);')
-              open(p_huge, 'w', encoding='utf-8').write(content)
+          patch_file('mm/huge_memory.c', lambda t: t.replace('try_to_unmap(page, ttu_flags);', 'try_to_unmap(page, (enum ttu_flags)ttu_flags);'))
           PYEOF
 
           python3 /tmp/fix_compat.py || true
@@ -225,31 +296,22 @@ jobs:
             make O=out alldefconfig
           fi
 
+          for sym in FORTIFY_SOURCE EFI_STUB CC_STACKPROTECTOR_STRONG CC_STACKPROTECTOR_REGULAR GCC_PLUGINS VDSO; do
+            sed -i "s/CONFIG_${sym}=y/# CONFIG_${sym} is not set/g" out/.config || true
+            echo "# CONFIG_${sym} is not set" >> out/.config
+          done
           sed -i 's/# CONFIG_KPROBES is not set/CONFIG_KPROBES=y/g' out/.config || true
           sed -i 's/# CONFIG_KRETPROBES is not set/CONFIG_KRETPROBES=y/g' out/.config || true
           sed -i 's/# CONFIG_HAVE_SYSCALL_TRACEPOINTS is not set/CONFIG_HAVE_SYSCALL_TRACEPOINTS=y/g' out/.config || true
-          sed -i 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS=n/g' out/.config || true
-          sed -i 's/CONFIG_VDSO=y/# CONFIG_VDSO=n/g' out/.config || true
-          sed -i 's/CONFIG_FORTIFY_SOURCE=y/# CONFIG_FORTIFY_SOURCE is not set/g' out/.config || true
-          sed -i 's/CONFIG_EFI_STUB=y/# CONFIG_EFI_STUB is not set/g' out/.config || true
-          sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g' out/.config || true
-          sed -i 's/CONFIG_CC_STACKPROTECTOR_REGULAR=y/# CONFIG_CC_STACKPROTECTOR_REGULAR is not set/g' out/.config || true
           echo "CONFIG_KPROBES=y" >> out/.config
           echo "CONFIG_KRETPROBES=y" >> out/.config
           echo "CONFIG_HAVE_SYSCALL_TRACEPOINTS=y" >> out/.config
-          echo "CONFIG_GCC_PLUGINS=n" >> out/.config
-          echo "CONFIG_VDSO=n" >> out/.config
-          echo "# CONFIG_FORTIFY_SOURCE is not set" >> out/.config
-          echo "# CONFIG_EFI_STUB is not set" >> out/.config
-          echo "# CONFIG_CC_STACKPROTECTOR_STRONG is not set" >> out/.config
-          echo "# CONFIG_CC_STACKPROTECTOR_REGULAR is not set" >> out/.config
           echo "CONFIG_CC_STACKPROTECTOR_NONE=y" >> out/.config
 
           yes "" | make O=out oldconfig
-          sed -i 's/CONFIG_FORTIFY_SOURCE=y/# CONFIG_FORTIFY_SOURCE is not set/g' out/.config || true
-          sed -i 's/CONFIG_EFI_STUB=y/# CONFIG_EFI_STUB is not set/g' out/.config || true
-          sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g' out/.config || true
-          sed -i 's/CONFIG_CC_STACKPROTECTOR_REGULAR=y/# CONFIG_CC_STACKPROTECTOR_REGULAR is not set/g' out/.config || true
+          for sym in FORTIFY_SOURCE EFI_STUB CC_STACKPROTECTOR_STRONG CC_STACKPROTECTOR_REGULAR GCC_PLUGINS VDSO; do
+            sed -i "s/CONFIG_${sym}=y/# CONFIG_${sym} is not set/g" out/.config || true
+          done
           sed -i 's/YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' scripts/dtc/dtc-lexer.l || true
           make O=out -j`nproc` CC=aarch64-linux-gnu-gcc HOSTCC=gcc HOSTCFLAGS="-std=gnu89 -fcommon" KCFLAGS="-w -Wno-error -include linux/sukisu_compat.h" CROSS_COMPILE=aarch64-linux-gnu- prepare0
 
