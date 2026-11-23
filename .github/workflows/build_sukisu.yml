@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V266)
+name: Build Meizu 16T Pure SukiSU Kernel (V267)
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU 并批量修复 4.14 轮询/文件/内存/调度/LSM/FORTIFY/GCC15 兼容问题
+      - name: 3. 集成 SukiSU 并批量修复 4.14 轮询/文件/内存/调度/LSM/fsnotify/FORTIFY/GCC15 兼容问题
         run: |
           git config --global http.postBuffer 524288000
           git config --global http.compression false
@@ -227,6 +227,12 @@ jobs:
                                       os.path.join(r, f),
                                       lambda t: re.sub(r'#include\s*<uapi/linux/mount\.h>', '#include <linux/mount.h>', t)
                                   )
+
+          # 0.5 Linux 4.14 fsnotify_ops 使用 handle_event 替代 handle_inode_event
+          def fix_pkg_observer(t):
+              t = re.sub(r'\.\s*handle_inode_event\s*=', '.handle_event =', t)
+              return t
+          patch_file('drivers/kernelsu/manager/pkg_observer.c', fix_pkg_observer)
 
           # 1. ARM64 原子操作约束兼容
           patch_file('arch/arm64/include/asm/atomic_ll_sc.h', lambda t: re.sub(r'"(Ir|i|K|L|M|N)"', '"r"', t))
