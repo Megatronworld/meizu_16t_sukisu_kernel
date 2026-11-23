@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V265)
+name: Build Meizu 16T Pure SukiSU Kernel (V266)
 
 on:
   workflow_dispatch:
@@ -215,6 +215,18 @@ jobs:
               new_txt = fn(txt)
               if new_txt != txt:
                   open(path, 'w', encoding='utf-8').write(new_txt)
+
+          # 0. Linux 4.14 缺少 uapi/linux/mount.h，替换为 linux/mount.h
+          if not os.path.exists('include/uapi/linux/mount.h'):
+              for d in ['kernel/ksu', 'drivers/kernelsu']:
+                  if os.path.exists(d):
+                      for r, ds, fs in os.walk(d):
+                          for f in fs:
+                              if f.endswith(('.c', '.h')):
+                                  patch_file(
+                                      os.path.join(r, f),
+                                      lambda t: re.sub(r'#include\s*<uapi/linux/mount\.h>', '#include <linux/mount.h>', t)
+                                  )
 
           # 1. ARM64 原子操作约束兼容
           patch_file('arch/arm64/include/asm/atomic_ll_sc.h', lambda t: re.sub(r'"(Ir|i|K|L|M|N)"', '"r"', t))
