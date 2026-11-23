@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V267)
+name: Build Meizu 16T Pure SukiSU Kernel (V268)
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU 并批量修复 4.14 轮询/文件/内存/调度/LSM/fsnotify/FORTIFY/GCC15 兼容问题
+      - name: 3. 集成 SukiSU 并批量修复 4.14 轮询/文件/内存/调度/LSM/fsnotify/task_work/fallthrough/GCC15 兼容问题
         run: |
           git config --global http.postBuffer 524288000
           git config --global http.compression false
@@ -79,6 +79,30 @@ jobs:
 
           #ifndef SECCOMP_ARCH_NATIVE_NR
           #define SECCOMP_ARCH_NATIVE_NR 512
+          #endif
+
+          /* Linux 5.4+ fallthrough 宏兼容 4.14 */
+          #ifndef fallthrough
+          #if defined(__has_attribute)
+          #if __has_attribute(__fallthrough__)
+          #define fallthrough __attribute__((__fallthrough__))
+          #else
+          #define fallthrough do {} while (0)
+          #endif
+          #else
+          #define fallthrough do {} while (0)
+          #endif
+          #endif
+
+          /* Linux 5.10+ task_work_add notify 模式兼容 4.14 bool notify */
+          #ifndef TWA_RESUME
+          #define TWA_RESUME true
+          #endif
+          #ifndef TWA_SIGNAL
+          #define TWA_SIGNAL true
+          #endif
+          #ifndef TWA_NMI
+          #define TWA_NMI false
           #endif
 
           /* EPOLL* -> POLL* 兼容映射（Linux 4.14 轮询接口） */
