@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V259)
+name: Build Meizu 16T Pure SukiSU Kernel (V260)
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc wget python3 zip lld gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 3. 集成 SukiSU 并修复类型、原子操作、调度与 LSM 链表兼容
+      - name: 3. 集成 SukiSU 并修复类型、原子操作、调度、LSM 与 4.14 文件接口兼容
         run: |
           git config --global http.postBuffer 524288000
           git config --global http.compression false
@@ -63,6 +63,13 @@ jobs:
           #ifndef _LOFF_T
           #define _LOFF_T
           typedef long long loff_t;
+          #endif
+          #ifndef __HAVE_ARCH___POLL_T
+          #define __HAVE_ARCH___POLL_T
+          typedef unsigned int __poll_t;
+          #endif
+          #ifndef REMAP_FILE_DEDUP
+          #define REMAP_FILE_DEDUP (1 << 0)
           #endif
           struct pt_regs;
           #ifndef _LINUX_SYSCALL_FN_T_DEFINED
@@ -115,6 +122,19 @@ jobs:
                   txt
               )
               open(p_lsm, 'w', encoding='utf-8').write(txt)
+
+          p_fw = 'drivers/kernelsu/infra/file_wrapper.c'
+          if os.path.exists(p_fw):
+              txt = open(p_fw, 'r', encoding='utf-8', errors='ignore').read()
+              txt = re.sub(r'return\s+orig->f_op->iopoll\s*\([^;]*\)\s*;', 'return -EOPNOTSUPP;', txt)
+              txt = re.sub(r'return\s+orig->f_op->remap_file_range\s*\([^;]*\)\s*;', 'return -EOPNOTSUPP;', txt)
+              txt = re.sub(r'if\s*\(\s*orig->f_op->fadvise\s*\)\s*\{[^}]*\}', '', txt, flags=re.S)
+              txt = re.sub(r'return\s+orig->f_op->fadvise\s*\([^;]*\)\s*;', 'return -EOPNOTSUPP;', txt)
+              txt = re.sub(r'p->ops\.iopoll\s*=\s*[^;]*;', '', txt)
+              txt = re.sub(r'p->ops\.mmap_supported_flags\s*=\s*[^;]*;', '', txt)
+              txt = re.sub(r'p->ops\.remap_file_range\s*=\s*[^;]*;', '', txt)
+              txt = re.sub(r'p->ops\.fadvise\s*=\s*[^;]*;', '', txt)
+              open(p_fw, 'w', encoding='utf-8').write(txt)
 
           for d in ['kernel/ksu', 'drivers/kernelsu']:
               if os.path.exists(d):
