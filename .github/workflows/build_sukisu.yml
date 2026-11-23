@@ -1,4 +1,4 @@
-name: Build Meizu 16T Pure SukiSU Kernel (V257)
+name: Build Meizu 16T Pure SukiSU Kernel (V259)
 
 on:
   workflow_dispatch:
@@ -104,6 +104,16 @@ jobs:
               txt = open(p_lsm, 'r', encoding='utf-8', errors='ignore').read()
               txt = txt.replace('hook->list.list.pprev = &head->first;', 'hook->list.list.prev = (struct list_head *)&head->first;')
               txt = txt.replace('slot = (void **)&hook->list.head->first;', 'slot = (void **)&hook->list.head->next;')
+              txt = re.sub(
+                  r'hlist_for_each_entry\s*\(\s*entry\s*,\s*head\s*,\s*list\s*\)',
+                  'list_for_each_entry(entry, (struct list_head *)(head), list)',
+                  txt
+              )
+              txt = re.sub(
+                  r'hlist_entry\s*\(\s*head->first\s*,\s*struct\s+security_hook_list\s*,\s*list\s*\)',
+                  'list_first_entry_or_null((struct list_head *)(head), struct security_hook_list, list)',
+                  txt
+              )
               open(p_lsm, 'w', encoding='utf-8').write(txt)
 
           for d in ['kernel/ksu', 'drivers/kernelsu']:
