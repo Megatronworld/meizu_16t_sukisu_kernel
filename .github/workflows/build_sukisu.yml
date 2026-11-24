@@ -85,12 +85,12 @@ jobs:
           #ifndef fallthrough
           #if defined(__has_attribute)
           #if __has_attribute(__fallthrough__)
-          #define fallthrough __attribute__((__fallthrough__))
+          /* no fallthrough macro */
           #else
-          #define fallthrough do {} while (0)
+          /* no fallthrough macro */
           #endif
           #else
-          #define fallthrough do {} while (0)
+          /* no fallthrough macro */
           #endif
           #endif
 
@@ -257,6 +257,7 @@ jobs:
               t = re.sub(r'\.\s*handle_inode_event\s*=', '.handle_event =', t)
               return t
           patch_file('drivers/kernelsu/manager/pkg_observer.c', fix_pkg_observer)
+patch_file('drivers/kernelsu/policy/app_profile.c', lambda s: s.replace('atomic_set(&current->seccomp.filter_count, 0);', '/* 4.14 no filter_count */'))
 
           # 1. ARM64 原子操作约束兼容
           patch_file('arch/arm64/include/asm/atomic_ll_sc.h', lambda t: re.sub(r'"(Ir|i|K|L|M|N)"', '"r"', t))
