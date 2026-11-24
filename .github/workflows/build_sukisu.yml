@@ -259,6 +259,7 @@ jobs:
               return t
           patch_file('drivers/kernelsu/manager/pkg_observer.c', fix_pkg_observer)
           patch_file('drivers/kernelsu/policy/allowlist.c', lambda s: s.replace('fallthrough;', '/* fallthrough on 4.14 */'))
+          patch_file('drivers/kernelsu/hook/lsm_hook.c', lambda s: s.replace('hook->list.list.pprev = &head->first;', '/* 4.14 list_head */ hook->list.list.prev = head;').replace('slot = (void **)&hook->list.head->first;', 'slot = (void **)&hook->list.head->next;'))
           patch_file('drivers/kernelsu/extension/cpu_spoof.c', lambda s: s.replace('#ifndef 0', '#ifndef VDSO_CLOCKMODE_ARCHTIMER').replace('(*curr_cs_ptr)/* 4.14 */
                             0;', '/* 4.14 skip */').replace('(enum vdso_clock_mode *)find_kernel_symbol_exact', '(void *)find_kernel_symbol_exact').replace('if (vd_default)', 'if (0 && vd_default)'))
           patch_file('drivers/kernelsu/policy/app_profile.c', lambda s: s.replace('atomic_set(&current->seccomp.filter_count, 0);', 'do {} while (0);'))
@@ -281,7 +282,6 @@ jobs:
                   t
               )
               return t
-          patch_file('drivers/kernelsu/hook/lsm_hook.c', fix_lsm)
 
           # 3. 4.14 file_operations 缺失字段（iopoll / remap_file_range / fadvise / mmap_supported_flags）兜底
           def fix_fw(t):
