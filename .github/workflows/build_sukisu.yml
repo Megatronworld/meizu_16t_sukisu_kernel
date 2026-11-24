@@ -259,7 +259,7 @@ jobs:
               return t
           patch_file('drivers/kernelsu/manager/pkg_observer.c', fix_pkg_observer)
           patch_file('drivers/kernelsu/policy/allowlist.c', lambda s: s.replace('fallthrough;', '/* fallthrough on 4.14 */'))
-          patch_file('drivers/kernelsu/extension/cpu_spoof.c', lambda s: s.replace('vdso[CS_HRES_COARSE].clock_mode', '/* 4.14 skip */ (void)vdso'))
+          patch_file('drivers/kernelsu/extension/cpu_spoof.c', lambda s: s.replace('vdso[CS_HRES_COARSE].clock_mode =', '/* 4.14 */').replace('vdso[CS_RAW].clock_mode =', '/* 4.14 */').replace('->vdso_clock_mode =', '/* 4.14 */').replace('*vd_default =', '/* 4.14 */').replace('VDSO_CLOCKMODE_ARCHTIMER', '0'))
           patch_file('drivers/kernelsu/policy/app_profile.c', lambda s: s.replace('atomic_set(&current->seccomp.filter_count, 0);', 'do {} while (0);'))
 
           # 1. ARM64 原子操作约束兼容
