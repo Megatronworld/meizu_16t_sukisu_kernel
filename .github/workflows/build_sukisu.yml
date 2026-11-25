@@ -249,9 +249,9 @@ jobs:
                           for f in fs:
                               if f.endswith(('.c', '.h')):
                                   patch_file(
-                                      os.path.join(r, f),
-                                      lambda t: re.sub(r'#include\s*<uapi/linux/mount\.h>', '#include <linux/mount.h>', t)
-                                  )
+                                  os.path.join(r, f),
+                                  lambda t: re.sub(r'#include\s*<uapi/linux/mount\.h>', '#include <linux/mount.h>', t)
+                              )
 
           # 0.5 Linux 4.14 fsnotify_ops 使用 handle_event 替代 handle_inode_event
           def fix_pkg_observer(t):
@@ -259,9 +259,45 @@ jobs:
               return t
           patch_file('drivers/kernelsu/manager/pkg_observer.c', fix_pkg_observer)
           patch_file('drivers/kernelsu/policy/allowlist.c', lambda s: s.replace('fallthrough;', '/* fallthrough on 4.14 */'))
-          patch_file('drivers/kernelsu/hook/lsm_hook.c', lambda s: s.replace('hook->list.list.pprev = &head->first;', '/* 4.14 */ hook->list.list.prev = head;').replace('hook->list.head->first', 'hook->list.head->next'))
-          patch_file('drivers/kernelsu/extension/cpu_spoof.c', lambda s: s.replace('#ifndef 0', '#ifndef VDSO_CLOCKMODE_ARCHTIMER').replace('(*curr_cs_ptr)/* 4.14 */
-                            0;', '/* 4.14 skip */').replace('(enum vdso_clock_mode *)find_kernel_symbol_exact', '(void *)find_kernel_symbol_exact').replace('if (vd_default)', 'if (0 && vd_default)'))
+          patch_file('drivers/kernelsu/hook/lsm_hook.c', lambda s: s.replace('hook->list.list.pprev = &head->first;', 'hook->list.list.prev = (struct list_head *)head;').replace('hook->list.head->first', 'hook->list.head->next'))
+          def fix_cpu_spoof(s):
+              s = s.replace('#ifndef 0', '#ifndef VDSO_CLOCKMODE_ARCHTIMER')
+              s = re.sub(r'vdso\s*\[[^\]]+\]\.clock_mode\s*=[^;]+;', '/* 4.14 skip vdso clock_mode */', s)
+              s = re.sub(r'\(\*curr_cs_ptr\)->vdso_clock_mode\s*=[^;]+;', '/* 4.14 skip vdso_clock_mode */', s)
+              s = re.sub(r'\*vd_default\s*=[^;]+;', '/* 4.14 skip vdso clock_mode */', s)
+              s = s.replace('(enum vdso_clock_mode *)find_kernel_symbol_exact', '(void *)find_kernel_symbol_exact')
+              s = re.sub(r'if\s*\(\s*(?:0\s*&&\s*)?vd_default\s*\)', 'if (0)', s)
+              s = re.sub(r'\}\s*else\s*if\s*\(0\)\s*\{', '} else {', s)
+              s = re.sub(r'([^;\{\}]\s*)\n(\s*if \(0\) \{)', r'\1;\n\2', s)
+              for idx, ln in enumerate(s.splitlines(), 1):
+                  if 175 <= idx <= 195:
+                      print(f'[cpu_spoof:{idx}] {ln}')
+              return s
+          patch_file('drivers/kernelsu/extension/cpu_spoof.c', fix_cpu_spoof)
+          def fix_selinux_c(s):
+              if 'extern int selinux_enforcing;' not in s:
+                  s = 'extern int selinux_enforcing;\n' + s
+              s = s.replace('selinux_state.enforcing', 'selinux_enforcing')
+              return s
+          patch_file('drivers/kernelsu/selinux/selinux.c', fix_selinux_c)
+          def fix_rules_c(s):
+              s = s.replace('selinux_enforcing.policy', 'selinux_policy_414_ptr')
+              s = s.replace('selinux_enforcing.policy_mutex', 'selinux_policy_414_lock')
+              s = re.sub(r'rcu_dereference_protected\s*\(\s*selinux_policy_414_ptr\s*,\s*lockdep_is_held\s*\(\s*selinux_policy_414_lock\s*\)\s*\)', '(&policydb)', s)
+              s = re.sub(r'selinux_status_update_policyload\s*\(\s*&selinux_state\s*,\s*([^)]+)\)', r'selinux_status_update_policyload(\1)', s)
+              s = re.sub(r'mutex_lock\s*\(\s*&selinux_state\.policy_mutex\s*\)\s*;', '/* 4.14 no selinux_state.policy_mutex */', s)
+              s = re.sub(r'mutex_unlock\s*\(\s*&selinux_state\.policy_mutex\s*\)\s*;', '/* 4.14 no selinux_state.policy_mutex */', s)
+              s = s.replace('selinux_state.avc', 'NULL')
+              s = s.replace('selinux_state', 'selinux_enforcing')
+              s = re.sub(r'struct\s+selinux_policy\s*\*', 'struct policydb *', s)
+              s = re.sub(r'->policydb\b', '', s)
+              s = re.sub(r'->sidtab\b', '', s)
+              s = re.sub(r'->latest_granting\b', '', s)
+              header_414 = 'extern int selinux_enforcing;\nextern struct policydb policydb;\nstatic DEFINE_MUTEX(selinux_policy_414_lock);\n'
+              if 'policydb selinux_policy_414_lock' not in s:
+                  s = header_414 + s
+              return s
+          patch_file('drivers/kernelsu/selinux/rules.c', fix_rules_c)
           patch_file('drivers/kernelsu/policy/app_profile.c', lambda s: s.replace('atomic_set(&current->seccomp.filter_count, 0);', 'do {} while (0);'))
 
           # 1. ARM64 原子操作约束兼容
@@ -269,7 +305,6 @@ jobs:
 
           # 2. 4.14 LSM security_hook_list 链表结构适配
           def fix_lsm(t):
-              t = t.replace('hook->list.list.pprev = &head->first;', 'hook->list.list.prev = (struct list_head *)&head->first;')
               t = t.replace('slot = (void **)&hook->list.head->first;', 'slot = (void **)&hook->list.head->next;')
               t = re.sub(
                   r'hlist_for_each_entry\s*\(\s*entry\s*,\s*head\s*,\s*list\s*\)',
@@ -281,7 +316,10 @@ jobs:
                   'list_first_entry_or_null((struct list_head *)(head), struct security_hook_list, list)',
                   t
               )
+              t = t.replace('hook->list.list.pprev = &head->first;', 'hook->list.list.prev = (struct list_head *)head;')
+              t = t.replace('hook->list.head->first', 'hook->list.head->next')
               return t
+          patch_file('drivers/kernelsu/hook/lsm_hook.c', fix_lsm)
 
           # 3. 4.14 file_operations 缺失字段（iopoll / remap_file_range / fadvise / mmap_supported_flags）兜底
           def fix_fw(t):
@@ -328,7 +366,7 @@ jobs:
                   for f in fs:
                       if f.endswith('.c') and f not in ('rt.c', 'fair.c'):
                           fp = os.path.join(r, f)
-                          patch_file(fp, lambda t: (boost_def + t) if ('FULL_THROTTLE_BOOST' in t and boost_def not in t) else t)
+                      patch_file(fp, lambda t: (boost_def + t) if ('FULL_THROTTLE_BOOST' in t and boost_def not in t) else t)
 
           # 6. EFI stub TEXT_OFFSET 与 mm/huge_memory.c 枚举类型转换兼容
           def fix_efi(t):
@@ -347,7 +385,9 @@ jobs:
           patch_file('mm/huge_memory.c', lambda t: t.replace('try_to_unmap(page, ttu_flags);', 'try_to_unmap(page, (enum ttu_flags)ttu_flags);'))
           PYEOF
 
-          python3 /tmp/fix_compat.py || true
+          python3 -m py_compile /tmp/fix_compat.py
+          python3 /tmp/fix_compat.py
+          grep -n -C 2 "pprev\|->first" drivers/kernelsu/hook/lsm_hook.c || true
           find . -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null | xargs sed -i '/#error/d' || true
 
       - name: 4. 注入 VDSO 桩与清理状态
