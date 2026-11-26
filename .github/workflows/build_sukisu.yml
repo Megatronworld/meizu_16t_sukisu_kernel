@@ -294,13 +294,33 @@ jobs:
               s = s.replace('selinux_state.enforcing', 'selinux_enforcing')
               s = re.sub(r'\bselinux_state\b', 'selinux_enforcing', s)
               s = re.sub(r'\bstruct\s+selinux_policy\b', 'struct ksu_414_sepolicy_holder', s)
+              # Linux 4.14 selinux_status_update_policyload(int seqno) 仅接收 1 个参数
               s = re.sub(
-                  r'(rcu_dereference_protected\s*\([^;\n]+?\))\s*\)\s*;',
-                  r'\1;',
+                  r'selinux_status_update_policyload\s*\(\s*&?selinux_[a-zA-Z0-9_]+\s*,\s*([^\)]+)\)',
+                  r'selinux_status_update_policyload(\1)',
                   s,
               )
+              # 按行修复 rcu_dereference_protected(...) 括号不匹配问题
+              fixed_lines = []
+              for ln in s.splitlines(True):
+                  if 'rcu_dereference_protected(' in ln and ';' in ln:
+                      semi_idx = ln.rfind(';')
+                      head = ln[:semi_idx]
+                      tail = ln[semi_idx:]
+                      diff = head.count('(') - head.count(')')
+                      if diff > 0:
+                          head = head + (')' * diff)
+                      elif diff < 0:
+                          for _ in range(-diff):
+                              p = head.rfind(')')
+                              if p != -1:
+                                  head = head[:p] + head[p+1:]
+                      ln = head + tail
+                  fixed_lines.append(ln)
+              s = ''.join(fixed_lines)
               header_414 = (
                   '#include <linux/rcupdate.h>\n'
+                  '#include <linux/lockdep.h>\n'
                   '#include <linux/mutex.h>\n'
                   '#include <linux/slab.h>\n'
                   'extern int selinux_enforcing;\n'
