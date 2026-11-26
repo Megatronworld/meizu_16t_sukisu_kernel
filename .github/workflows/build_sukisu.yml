@@ -258,6 +258,11 @@ jobs:
               t = re.sub(r'\.\s*handle_inode_event\s*=', '.handle_event =', t)
               return t
           patch_file('drivers/kernelsu/manager/pkg_observer.c', fix_pkg_observer)
+          def fix_app_profile(t):
+              t = re.sub(r'atomic_set\s*\(\s*&?current->seccomp\.filter_count\s*,[^;]*\)\s*;', '/* 4.14 seccomp has no filter_count */', t)
+              t = re.sub(r'current->seccomp\.filter_count', 'current->seccomp.mode', t)
+              return t
+          patch_file('drivers/kernelsu/policy/app_profile.c', fix_app_profile)
           patch_file('drivers/kernelsu/policy/allowlist.c', lambda s: s.replace('fallthrough;', '/* fallthrough on 4.14 */'))
           patch_file('drivers/kernelsu/hook/lsm_hook.c', lambda s: s.replace('hook->list.list.pprev = &head->first;', 'hook->list.list.prev = (struct list_head *)head;').replace('hook->list.head->first', 'hook->list.head->next'))
           def fix_cpu_spoof(s):
