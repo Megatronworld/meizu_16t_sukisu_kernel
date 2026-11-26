@@ -338,12 +338,10 @@ jobs:
                   'static inline int ksu_414_policydb_load_isids(void *p, void *s) { (void)p; (void)s; return 0; }\n'
                   'static inline bool ksu_414_set_original_types(void *db, void *old_db, int g) { (void)db; (void)old_db; (void)g; return true; }\n'
                   'static inline bool ksu_414_advance_original_types(void *db, void *old_db, int og, int ng) { (void)db; (void)old_db; (void)og; (void)ng; return true; }\n'
-                  'static inline void ksu_414_reset_avc_cache(int g) { (void)g; }\n'
               )
               s = re.sub(r'\bpolicydb_load_isids\b', 'ksu_414_policydb_load_isids', s)
               s = re.sub(r'\bksu_set_original_types\b', 'ksu_414_set_original_types', s)
               s = re.sub(r'\bksu_advance_original_types\b', 'ksu_414_advance_original_types', s)
-              s = re.sub(r'\breset_avc_cache\b', 'ksu_414_reset_avc_cache', s)
               if 'selinux_policy_414_dummy' not in s:
                   s = header_414 + s
               return s
