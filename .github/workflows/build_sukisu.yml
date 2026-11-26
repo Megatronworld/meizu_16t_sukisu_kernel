@@ -346,6 +346,69 @@ jobs:
                   s = header_414 + s
               return s
           patch_file('drivers/kernelsu/selinux/rules.c', fix_rules_c)
+          def fix_sepolicy_c(s: str) -> str:
+              hdr = (
+                  '#include <linux/flex_array.h>\n'
+                  '#include <linux/slab.h>\n'
+                  '#include <linux/string.h>\n'
+                  '#ifndef POLICYDB_CONFIG_ANDROID_NETLINK_ROUTE\n'
+                  '#define POLICYDB_CONFIG_ANDROID_NETLINK_ROUTE (1 << 0)\n'
+                  '#endif\n'
+                  '#ifndef POLICYDB_CONFIG_ANDROID_NETLINK_GETNEIGH\n'
+                  '#define POLICYDB_CONFIG_ANDROID_NETLINK_GETNEIGH (1 << 1)\n'
+                  '#endif\n'
+                  'struct ksu_414_filename_trans_key {\n'
+                  '    u32 stype;\n'
+                  '    u32 ttype;\n'
+                  '    u16 tclass;\n'
+                  '    const char *name;\n'
+                  '};\n'
+                  'struct ksu_414_filename_trans_datum {\n'
+                  '    u32 otype;\n'
+                  '    struct ebitmap stypes;\n'
+                  '    struct ksu_414_filename_trans_datum *next;\n'
+                  '};\n'
+                  'static inline int ksu_414_hashtab_insert_4(struct hashtab *h, void *k, void *d, const void *fn) { (void)fn; return hashtab_insert(h, k, d); }\n'
+                  'static inline void *ksu_414_flex_get(void *fa, unsigned int idx) { return fa ? flex_array_get((struct flex_array *)fa, idx) : NULL; }\n'
+                  'static inline int ksu_414_flex_put(void *fa, unsigned int idx, const void *val) { return fa ? flex_array_put((struct flex_array *)fa, idx, &val, GFP_KERNEL) : 0; }\n'
+              )
+              if 'ksu_414_filename_trans_key' not in s:
+                  s = hdr + s
+              s = re.sub(r'\bstruct\s+filename_trans_key\b', 'struct ksu_414_filename_trans_key', s)
+              s = re.sub(r'\bstruct\s+filename_trans_datum\b', 'struct ksu_414_filename_trans_datum', s)
+              s = s.replace('filenametr_key_params', 'NULL')
+              s = re.sub(
+                  r'hashtab_insert\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\)]+)\)',
+                  r'ksu_414_hashtab_insert_4(\1, \2, \3, \4)',
+                  s,
+              )
+              s = s.replace('db->compat_filename_trans_count', 'db->p_types.nprim')
+              s = re.sub(r'db->type_val_to_struct', 'db->role_val_to_struct', s)
+              # flex_array 赋值与读取兼容
+              s = re.sub(
+                  r'(db->te_avtab\.htable\[[^\]]+\])\s*=\s*([^;]+);',
+                  r'ksu_414_flex_put(\1, 0, \2);',
+                  s,
+              )
+              s = re.sub(
+                  r'removed\.htable\[0\]\s*=\s*([^;]+);',
+                  r'(void)(\1);',
+                  s,
+              )
+              s = re.sub(
+                  r'(db->sym_val_to_name\[[^\]]+\]\[[^\]]+\])\s*=\s*([^;]+);',
+                  r'ksu_414_flex_put(\1, 0, \2);',
+                  s,
+              )
+              # struct selinux_policy 字段访问兼容（4.14 中直接指向 policydb）
+              s = re.sub(r'\bstruct\s+selinux_policy\b', 'struct ksu_414_sepolicy_holder', s)
+              s = s.replace('old_pol->policydb.len', '0')
+              s = s.replace('new_pol->policydb.len', '0')
+              s = s.replace('old_pol->policydb.android_netlink_route', '0')
+              s = s.replace('old_pol->policydb.android_netlink_getneigh', '0')
+              return s
+          patch_file('drivers/kernelsu/selinux/sepolicy.c', fix_sepolicy_c)
+
           def fix_lsm(t):
               t = t.replace('slot = (void **)&hook->list.head->first;', 'slot = (void **)&hook->list.head->next;')
               t = re.sub(
