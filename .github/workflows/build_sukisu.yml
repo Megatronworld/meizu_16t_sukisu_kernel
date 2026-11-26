@@ -280,30 +280,57 @@ jobs:
               s = s.replace('selinux_state.enforcing', 'selinux_enforcing')
               return s
           patch_file('drivers/kernelsu/selinux/selinux.c', fix_selinux_c)
-          def fix_rules_c(s):
-              s = s.replace('selinux_enforcing.policy', 'selinux_policy_414_ptr')
-              s = s.replace('selinux_enforcing.policy_mutex', 'selinux_policy_414_lock')
-              s = re.sub(r'rcu_dereference_protected\s*\(\s*selinux_policy_414_ptr\s*,\s*lockdep_is_held\s*\(\s*selinux_policy_414_lock\s*\)\s*\)', '(&policydb)', s)
-              s = re.sub(r'selinux_status_update_policyload\s*\(\s*&selinux_state\s*,\s*([^)]+)\)', r'selinux_status_update_policyload(\1)', s)
-              s = re.sub(r'mutex_lock\s*\(\s*&selinux_state\.policy_mutex\s*\)\s*;', '/* 4.14 no selinux_state.policy_mutex */', s)
-              s = re.sub(r'mutex_unlock\s*\(\s*&selinux_state\.policy_mutex\s*\)\s*;', '/* 4.14 no selinux_state.policy_mutex */', s)
+          def fix_rules_c(s: str) -> str:
+              s = s.replace('selinux_state.policy', 'selinux_policy_414_ptr')
+              s = s.replace('selinux_state.policy_mutex', 'selinux_policy_414_lock')
               s = s.replace('selinux_state.avc', 'NULL')
-              s = s.replace('selinux_state', 'selinux_enforcing')
-              s = re.sub(r'struct\s+selinux_policy\s*\*', 'struct policydb *', s)
+              s = s.replace('selinux_state.enforcing', 'selinux_enforcing')
+
+              s = re.sub(
+                  r'rcu_dereference_protected\s*\(\s*selinux_policy_414_ptr\s*,[^)]*\)',
+                  'rcu_dereference_protected(selinux_policy_414_ptr, lockdep_is_held(&selinux_policy_414_lock))',
+                  s,
+              )
+              s = re.sub(
+                  r'rcu_assign_pointer\s*\(\s*selinux_policy_414_ptr\s*,',
+                  'rcu_assign_pointer(selinux_policy_414_ptr,',
+                  s,
+              )
+              s = re.sub(
+                  r'selinux_status_update_policyload\s*\(\s*&selinux_state\s*,\s*([^)]+)\)',
+                  r'selinux_status_update_policyload(\1)',
+                  s,
+              )
+              s = re.sub(
+                  r'mutex_lock\s*\(\s*&selinux_policy_414_lock\s*\)\s*;',
+                  'mutex_lock(&selinux_policy_414_lock);',
+                  s,
+              )
+              s = re.sub(
+                  r'mutex_unlock\s*\(\s*&selinux_policy_414_lock\s*\)\s*;',
+                  'mutex_unlock(&selinux_policy_414_lock);',
+                  s,
+              )
+
+              s = re.sub(r'\bselinux_state\b', 'selinux_enforcing', s)
+
+              s = re.sub(r'\bstruct\s+selinux_policy\s*\*', 'struct policydb *', s)
               s = re.sub(r'->policydb\b', '', s)
               s = re.sub(r'->sidtab\b', '', s)
               s = re.sub(r'->latest_granting\b', '', s)
-              header_414 = 'extern int selinux_enforcing;\nextern struct policydb policydb;\nstatic DEFINE_MUTEX(selinux_policy_414_lock);\n'
-              if 'policydb selinux_policy_414_lock' not in s:
+
+              header_414 = (
+                  '#include <linux/rcupdate.h>\n'
+                  '#include <linux/mutex.h>\n'
+                  'extern int selinux_enforcing;\n'
+                  'struct policydb;\n'
+                  'static struct policydb *selinux_policy_414_ptr = NULL;\n'
+                  'static DEFINE_MUTEX(selinux_policy_414_lock);\n'
+              )
+              if 'selinux_policy_414_ptr' not in s:
                   s = header_414 + s
+
               return s
-          patch_file('drivers/kernelsu/selinux/rules.c', fix_rules_c)
-          patch_file('drivers/kernelsu/policy/app_profile.c', lambda s: s.replace('atomic_set(&current->seccomp.filter_count, 0);', 'do {} while (0);'))
-
-          # 1. ARM64 原子操作约束兼容
-          patch_file('arch/arm64/include/asm/atomic_ll_sc.h', lambda t: re.sub(r'"(Ir|i|K|L|M|N)"', '"r"', t))
-
-          # 2. 4.14 LSM security_hook_list 链表结构适配
           def fix_lsm(t):
               t = t.replace('slot = (void **)&hook->list.head->first;', 'slot = (void **)&hook->list.head->next;')
               t = re.sub(
