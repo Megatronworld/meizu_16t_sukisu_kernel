@@ -290,7 +290,6 @@ jobs:
               s = s.replace('selinux_state.policy_mutex', 'selinux_policy_414_lock')
               s = s.replace('selinux_state.avc', 'NULL')
               s = s.replace('selinux_state.enforcing', 'selinux_enforcing')
-
               s = re.sub(
                   r'rcu_dereference_protected\s*\(\s*selinux_policy_414_ptr\s*,[^)]*\)',
                   'rcu_dereference_protected(selinux_policy_414_ptr, lockdep_is_held(&selinux_policy_414_lock))',
@@ -316,26 +315,29 @@ jobs:
                   'mutex_unlock(&selinux_policy_414_lock);',
                   s,
               )
-
               s = re.sub(r'\bselinux_state\b', 'selinux_enforcing', s)
-
-              s = re.sub(r'\bstruct\s+selinux_policy\s*\*', 'struct policydb *', s)
               s = re.sub(r'->policydb\b', '', s)
               s = re.sub(r'->sidtab\b', '', s)
               s = re.sub(r'->latest_granting\b', '', s)
-
+              s = re.sub(r'\bstruct\s+selinux_policy\b', 'struct ksu_414_sepolicy_holder', s)
               header_414 = (
                   '#include <linux/rcupdate.h>\n'
                   '#include <linux/mutex.h>\n'
                   'extern int selinux_enforcing;\n'
                   'struct policydb;\n'
-                  'static struct policydb *selinux_policy_414_ptr = NULL;\n'
+                  'struct sidtab;\n'
+                  'struct ksu_414_sepolicy_holder {\n'
+                  '    struct policydb policydb;\n'
+                  '    struct sidtab *sidtab;\n'
+                  '    int latest_granting;\n'
+                  '};\n'
+                  'static struct ksu_414_sepolicy_holder *selinux_policy_414_ptr = NULL;\n'
                   'static DEFINE_MUTEX(selinux_policy_414_lock);\n'
               )
               if 'selinux_policy_414_ptr' not in s:
                   s = header_414 + s
-
               return s
+          patch_file('drivers/kernelsu/selinux/rules.c', fix_rules_c)
           def fix_lsm(t):
               t = t.replace('slot = (void **)&hook->list.head->first;', 'slot = (void **)&hook->list.head->next;')
               t = re.sub(
