@@ -47,6 +47,12 @@ jobs:
           #endif
           PGTABLE
 
+          cat << 'MINMAX' > include/linux/minmax.h
+          #ifndef _LINUX_MINMAX_SHIM_H
+          #define _LINUX_MINMAX_SHIM_H
+          #include <linux/kernel.h>
+          #endif
+          MINMAX
           mkdir -p include/vdso && : > include/vdso/datapage.h && : > include/vdso/clocksource.h
           cat << 'COMPAT' > include/linux/sukisu_compat.h
           #ifndef _SUKISU_COMPAT_H
@@ -385,7 +391,7 @@ jobs:
                   '#endif\n'
                   + types_guard +
                   'struct ksu_414_filename_trans_key { u32 stype; u32 ttype; u16 tclass; const char *name; };\n'
-                  'struct ksu_414_filename_trans_datum { u32 otype; void *_stypes_pad; struct ksu_414_filename_trans_datum *next; };\n'
+                  'struct ksu_414_filename_trans_datum { u32 otype; struct ebitmap stypes; struct ksu_414_filename_trans_datum *next; };\n'
                   'static inline int ksu_414_hashtab_insert_4(struct hashtab *h, void *k, void *d, const void *fn) { (void)fn; return hashtab_insert(h, k, d); }\n'
                   'static inline void *ksu_414_flex_get_ptr(void *fa, unsigned int idx) { void *p = NULL; if (!fa) return NULL; return flex_array_get((struct flex_array *)fa, idx) ? *(void **)flex_array_get((struct flex_array *)fa, idx) : p; }\n'
                   'static inline int ksu_414_flex_put_ptr(void *fa, unsigned int idx, const void *val) { if (!fa) return 0; return flex_array_put((struct flex_array *)fa, idx, &val, GFP_KERNEL); }\n'
