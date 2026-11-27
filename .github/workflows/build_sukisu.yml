@@ -445,8 +445,10 @@ jobs:
               s = re.sub(r'\bold_pol->policydb\.android_netlink_getneigh\b', '0', s)
               s = re.sub(r'\bpolicydb_write\s*\([^;]*\);', '0;', s)
               s = re.sub(r'\bpolicydb_read\s*\([^;]*\);', '0;', s)
-              s = re.sub(r'ebitmap_get_bit\\s*\\(\\s*&trans->stypes\\s*,[^;]*\\)', '0', s)
-              s = re.sub(r'return\\s+ebitmap_set_bit\\s*\\(\\s*&trans->stypes\\s*,[^;]*\\)\\s*==\\s*0\\s*;', 'return true;', s)
+              s = re.sub(r'ebitmap_get_bit\s*\(\s*&trans->stypes\b[^;]*?\)\s*\)', '0', s, flags=re.S)
+              s = re.sub(r'ebitmap_get_bit\s*\(\s*&trans->stypes\b[^;]*?\)', '0', s, flags=re.S)
+              s = re.sub(r'return\s+ebitmap_set_bit\s*\(\s*&trans->stypes\b[^;]*?==\s*0\s*;', 'return true;', s, flags=re.S)
+              s = re.sub(r'ebitmap_set_bit\s*\(\s*&trans->stypes\b[^;]*?;', '0;', s, flags=re.S)
               return s
           patch_file('drivers/kernelsu/selinux/sepolicy.c', fix_sepolicy_c)
           def fix_lsm(t):
