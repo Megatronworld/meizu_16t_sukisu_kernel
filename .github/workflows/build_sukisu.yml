@@ -312,17 +312,22 @@ jobs:
                   '#endif\n'
                   '#ifndef _KSU_414_HIDE_TYPES_H\n'
                   '#define _KSU_414_HIDE_TYPES_H\n'
-                  'struct sidtab_entry { struct context context; };\n'
+                  'struct selinux_policy { void *sidtab; unsigned char policydb[256]; int latest_granting; unsigned char _pad[64]; };\n'
+                  'struct sidtab_entry { void *_pad[8]; };\n'
                   'static struct ksu_414_sepolicy_holder _ksu_414_hide_pol_dummy;\n'
                   'static struct ksu_414_sepolicy_holder *_ksu_414_hide_pol_ptr = &_ksu_414_hide_pol_dummy;\n'
-                  'struct { void *policy; } _ksu_414_selinux_state_dummy = { &_ksu_414_hide_pol_dummy };\n'
+                  'struct _ksu_414_selinux_state_s { void *policy; struct mutex status_lock; void *status_page; };\n'
+                  'static struct _ksu_414_selinux_state_s _ksu_414_selinux_state_dummy = { &_ksu_414_hide_pol_dummy, __MUTEX_INITIALIZER(_ksu_414_selinux_state_dummy.status_lock), NULL };\n'
                   '#endif\n'
               )
               if '_KSU_414_HIDE_TYPES_H' not in s:
                   s = hdr + s
+              s = re.sub(r'(#define\s+ksu_avc_has_perm_compat\([^)]*\))[^\n]*', r'\1 avc_has_perm(__VA_ARGS__)', s)
+              s = re.sub(r'(#define\s+ksu_security_bounded_transition_compat\([^)]*\))[^\n]*', r'\1 security_bounded_transition(__VA_ARGS__)', s)
+              s = re.sub(r'(#define\s+ksu_security_validate_transition_compat\([^)]*\))[^\n]*', r'\1 security_validate_transition(__VA_ARGS__)', s)
+              s = re.sub(r'\bCAP_OPT_NOAUDIT\b', '0', s)
               s = s.replace('selinux_state.policy', '_ksu_414_hide_pol_ptr')
               s = re.sub(r'\bselinux_state\b', '_ksu_414_selinux_state_dummy', s)
-              s = re.sub(r'\bstruct\s+selinux_policy\b', 'struct ksu_414_sepolicy_holder', s)
               s = re.sub(r'\btype_val_to_struct\b', 'role_val_to_struct', s)
               s = re.sub(r'mls_compute_context_len\s*\(\s*[^,()]+\s*,\s*([^)]+)\)', r'mls_compute_context_len(\1)', s)
               s = re.sub(r'mls_sid_to_context\s*\(\s*[^,()]+\s*,\s*([^,()]+)\s*,\s*([^)]+)\)', r'mls_sid_to_context(\1, \2)', s)
