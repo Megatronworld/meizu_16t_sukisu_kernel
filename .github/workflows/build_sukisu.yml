@@ -300,6 +300,34 @@ jobs:
                   s = decl + s
               return s
           patch_file('drivers/kernelsu/supercall/dispatch.c', fix_dispatch_c)
+          def fix_selinux_hide_c(s: str) -> str:
+              hdr = (
+                  '#include <linux/mutex.h>\n'
+                  '#ifndef _KSU_414_SELINUX_TYPES_H\n'
+                  '#define _KSU_414_SELINUX_TYPES_H\n'
+                  'struct ebitmap;\n'
+                  'struct sidtab;\n'
+                  'struct policydb;\n'
+                  'struct ksu_414_sepolicy_holder { void *sidtab; unsigned char policydb[256]; int latest_granting; unsigned char _pad[64]; };\n'
+                  '#endif\n'
+                  '#ifndef _KSU_414_HIDE_TYPES_H\n'
+                  '#define _KSU_414_HIDE_TYPES_H\n'
+                  'struct sidtab_entry { struct context context; };\n'
+                  'static struct ksu_414_sepolicy_holder _ksu_414_hide_pol_dummy;\n'
+                  'static struct ksu_414_sepolicy_holder *_ksu_414_hide_pol_ptr = &_ksu_414_hide_pol_dummy;\n'
+                  'struct { void *policy; } _ksu_414_selinux_state_dummy = { &_ksu_414_hide_pol_dummy };\n'
+                  '#endif\n'
+              )
+              if '_KSU_414_HIDE_TYPES_H' not in s:
+                  s = hdr + s
+              s = s.replace('selinux_state.policy', '_ksu_414_hide_pol_ptr')
+              s = re.sub(r'\bselinux_state\b', '_ksu_414_selinux_state_dummy', s)
+              s = re.sub(r'\bstruct\s+selinux_policy\b', 'struct ksu_414_sepolicy_holder', s)
+              s = re.sub(r'\btype_val_to_struct\b', 'role_val_to_struct', s)
+              s = re.sub(r'mls_compute_context_len\s*\(\s*[^,()]+\s*,\s*([^)]+)\)', r'mls_compute_context_len(\1)', s)
+              s = re.sub(r'mls_sid_to_context\s*\(\s*[^,()]+\s*,\s*([^,()]+)\s*,\s*([^)]+)\)', r'mls_sid_to_context(\1, \2)', s)
+              return s
+          patch_file('drivers/kernelsu/feature/selinux_hide.c', fix_selinux_hide_c)
           patch_file('drivers/kernelsu/selinux/selinux.c', fix_selinux_c)
           def fix_rules_c(s: str) -> str:
               s = s.replace('selinux_policy_414_ptr_mutex', 'selinux_policy_414_lock')
