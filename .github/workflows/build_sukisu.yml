@@ -350,7 +350,9 @@ jobs:
               types_guard = (
                   '#ifndef _KSU_414_SELINUX_TYPES_H\n'
                   '#define _KSU_414_SELINUX_TYPES_H\n'
-                  'struct ebitmap { void *node; u32 highbit; unsigned char _pad[32]; };\n'
+                  'struct ebitmap;\n'
+    'struct sidtab;\n'
+    'struct policydb;\n'
                   'struct ksu_414_sidtab { unsigned char _pad[64]; };\n'
                   'struct ksu_414_policydb { unsigned char _pad[256]; };\n'
                   'struct ksu_414_sepolicy_holder { struct ksu_414_sidtab *sidtab; struct ksu_414_policydb policydb; int latest_granting; unsigned char _pad[64]; };\n'
@@ -383,7 +385,7 @@ jobs:
                   '#endif\n'
                   + types_guard +
                   'struct ksu_414_filename_trans_key { u32 stype; u32 ttype; u16 tclass; const char *name; };\n'
-                  'struct ksu_414_filename_trans_datum { u32 otype; struct ebitmap stypes; struct ksu_414_filename_trans_datum *next; };\n'
+                  'struct ksu_414_filename_trans_datum { u32 otype; void *_stypes_pad; struct ksu_414_filename_trans_datum *next; };\n'
                   'static inline int ksu_414_hashtab_insert_4(struct hashtab *h, void *k, void *d, const void *fn) { (void)fn; return hashtab_insert(h, k, d); }\n'
                   'static inline void *ksu_414_flex_get_ptr(void *fa, unsigned int idx) { void *p = NULL; if (!fa) return NULL; return flex_array_get((struct flex_array *)fa, idx) ? *(void **)flex_array_get((struct flex_array *)fa, idx) : p; }\n'
                   'static inline int ksu_414_flex_put_ptr(void *fa, unsigned int idx, const void *val) { if (!fa) return 0; return flex_array_put((struct flex_array *)fa, idx, &val, GFP_KERNEL); }\n'
