@@ -347,18 +347,22 @@ jobs:
           patch_file('drivers/kernelsu/selinux/rules.c', fix_rules_c)
           def fix_sepolicy_c(s: str) -> str:
               h_path = 'drivers/kernelsu/selinux/sepolicy.h'
+              types_guard = (
+                  '#ifndef _KSU_414_SELINUX_TYPES_H\n'
+                  '#define _KSU_414_SELINUX_TYPES_H\n'
+                  'struct ebitmap { void *node; u32 highbit; unsigned char _pad[32]; };\n'
+                  'struct ksu_414_sidtab { unsigned char _pad[64]; };\n'
+                  'struct ksu_414_policydb { unsigned char _pad[256]; };\n'
+                  'struct ksu_414_sepolicy_holder { struct ksu_414_sidtab *sidtab; struct ksu_414_policydb policydb; int latest_granting; unsigned char _pad[64]; };\n'
+                  '#endif\n'
+              )
               if os.path.exists(h_path):
                   h_txt = open(h_path, 'r', encoding='utf-8', errors='ignore').read()
                   h_hdr = (
                       '#include <linux/types.h>\n'
                       '#include <linux/flex_array.h>\n'
                       '#include <linux/mutex.h>\n'
-                      '#ifndef _KSU_414_SELINUX_TYPES_H\n'
-                      '#define _KSU_414_SELINUX_TYPES_H\n'
-                      'struct ksu_414_sidtab { unsigned char _pad[64]; };\n'
-                      'struct ksu_414_policydb { unsigned char _pad[256]; };\n'
-                      'struct ksu_414_sepolicy_holder { struct ksu_414_sidtab *sidtab; struct ksu_414_policydb policydb; int latest_granting; unsigned char _pad[64]; };\n'
-                      '#endif\n'
+                      + types_guard +
                       'struct selinux_policy;\n'
                   )
                   if '_KSU_414_SELINUX_TYPES_H' not in h_txt:
@@ -377,12 +381,7 @@ jobs:
                   '#ifndef SYM_TYPES\n'
                   '#define SYM_TYPES 1\n'
                   '#endif\n'
-                  '#ifndef _KSU_414_SELINUX_TYPES_H\n'
-                  '#define _KSU_414_SELINUX_TYPES_H\n'
-                  'struct ksu_414_sidtab { unsigned char _pad[64]; };\n'
-                  'struct ksu_414_policydb { unsigned char _pad[256]; };\n'
-                  'struct ksu_414_sepolicy_holder { struct ksu_414_sidtab *sidtab; struct ksu_414_policydb policydb; int latest_granting; unsigned char _pad[64]; };\n'
-                  '#endif\n'
+                  + types_guard +
                   'struct ksu_414_filename_trans_key { u32 stype; u32 ttype; u16 tclass; const char *name; };\n'
                   'struct ksu_414_filename_trans_datum { u32 otype; struct ebitmap stypes; struct ksu_414_filename_trans_datum *next; };\n'
                   'static inline int ksu_414_hashtab_insert_4(struct hashtab *h, void *k, void *d, const void *fn) { (void)fn; return hashtab_insert(h, k, d); }\n'
@@ -392,8 +391,6 @@ jobs:
               if 'ksu_414_flex_get_ptr' not in s:
                   s = hdr + s
 
-              s = re.sub(r'struct\s+ebitmap_node\s*\{[^}]*\}\s*;', '', s)
-              s = re.sub(r'struct\s+ebitmap\s*\{[^}]*\}\s*;', '', s)
               s = s.replace('ksu_414_sepolicy_holder', 'selinux_policy')
               s = re.sub(r'\bstruct\s+filename_trans_key\b', 'struct ksu_414_filename_trans_key', s)
               s = re.sub(r'\bstruct\s+filename_trans_datum\b', 'struct ksu_414_filename_trans_datum', s)
@@ -434,6 +431,7 @@ jobs:
                   s,
               )
 
+              s = re.sub(r'\b(old_pol|new_pol)->policydb\.len\s*=\s*([^;]+);', r'(void)(\2);', s)
               s = re.sub(r'\b(old_pol|new_pol)->policydb\.len\b', '0', s)
               s = re.sub(r'\bold_pol->policydb\.android_netlink_route\b', '0', s)
               s = re.sub(r'\bold_pol->policydb\.android_netlink_getneigh\b', '0', s)
