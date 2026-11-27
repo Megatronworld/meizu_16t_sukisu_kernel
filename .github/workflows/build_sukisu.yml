@@ -290,6 +290,16 @@ jobs:
                   s = 'extern int selinux_enforcing;\n' + s
               s = s.replace('selinux_state.enforcing', 'selinux_enforcing')
               return s
+          def fix_dispatch_c(s: str) -> str:
+              decl = (
+                  '#include <linux/sched/task.h>\n'
+                  'extern rwlock_t tasklist_lock;\n'
+                  'extern struct task_struct init_task;\n'
+              )
+              if 'extern struct task_struct init_task;' not in s:
+                  s = decl + s
+              return s
+          patch_file('drivers/kernelsu/supercall/dispatch.c', fix_dispatch_c)
           patch_file('drivers/kernelsu/selinux/selinux.c', fix_selinux_c)
           def fix_rules_c(s: str) -> str:
               s = s.replace('selinux_policy_414_ptr_mutex', 'selinux_policy_414_lock')
