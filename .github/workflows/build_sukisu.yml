@@ -350,14 +350,8 @@ jobs:
               patch_file(_kpm_mk, lambda s: (s + '\nccflags-y += -std=gnu11\n') if '-std=gnu11' not in s else s)
           def fix_super_access_c(s):
               s = re.sub(r'\bfor\s*\(\s*size_t\s+([A-Za-z_][A-Za-z0-9_]*)\s*=', r'for (\1 =', s)
-              decls = []
-              for v in ('i', 'i1'):
-                  if re.search(r'\b' + v + r'\b', s) and ('size_t ' + v + ';') not in s:
-                      decls.append('size_t ' + v + ';')
-              if decls:
-                  m = re.search(r'\)\s*\{\s*\n', s)
-                  ins = '\n' + '\n'.join('    ' + d for d in decls) + '\n'
-                  s = (s[:m.end()] + ins + s[m.end():]) if m else ('\n'.join(decls) + '\n' + s)
+              s = re.sub(r'(?m)^(\s*)size_t\s+i;\s*\n\s*size_t\s+i1;\s*\n', '', s)
+              s = re.sub(r'(?m)^([A-Za-z_][A-Za-z0-9_\s\*]+\bsukisu_super_[A-Za-z0-9_]+\s*\([^)]*\)\s*\{\s*\n)', r'\1    size_t i, i1;\n', s)
               return s
           patch_file('drivers/kernelsu/extension/kpm/super_access.c', fix_super_access_c)
           for _kpm_mk in ('drivers/kernelsu/extension/kpm/Makefile', 'drivers/kernelsu/extension/kpm/Kbuild', 'drivers/kernelsu/Kbuild'):
