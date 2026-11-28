@@ -321,7 +321,7 @@ jobs:
                   '#endif\n'
               )
               if '_KSU_414_HIDE_TYPES_H' not in s:
-              s = hdr + s
+                  s = hdr + s
               s = re.sub(r'(#define\s+ksu_avc_has_perm_compat\([^)]*\))[^\n]*', r'\1 avc_has_perm(__VA_ARGS__)', s)
               s = re.sub(r'(#define\s+ksu_security_bounded_transition_compat\([^)]*\))[^\n]*', r'\1 security_bounded_transition(__VA_ARGS__)', s)
               s = re.sub(r'(#define\s+ksu_security_validate_transition_compat\([^)]*\))[^\n]*', r'\1 security_validate_transition(__VA_ARGS__)', s)
@@ -331,7 +331,7 @@ jobs:
               s = re.sub(r'\btype_val_to_struct\b', 'role_val_to_struct', s)
               s = re.sub(r'mls_compute_context_len\s*\(\s*[^,()]+\s*,\s*([^)]+)\)', r'mls_compute_context_len(\1)', s)
               s = re.sub(r'mls_sid_to_context\s*\(\s*[^,()]+\s*,\s*([^,()]+)\s*,\s*([^)]+)\)', r'mls_sid_to_context(\1, \2)', s)
-          s = s.replace('context_struct_to_string(p, &entry->context, scontext, scontext_len)', '((scontext && (*scontext = NULL)), (scontext_len && (*scontext_len = 0)), 0)')
+              s = s.replace('context_struct_to_string(p, &entry->context, scontext, scontext_len)', '((scontext && (*scontext = NULL)), (scontext_len && (*scontext_len = 0)), 0)')
               return s
           patch_file('drivers/kernelsu/feature/selinux_hide.c', fix_selinux_hide_c)
           patch_file('drivers/kernelsu/selinux/selinux.c', fix_selinux_c)
