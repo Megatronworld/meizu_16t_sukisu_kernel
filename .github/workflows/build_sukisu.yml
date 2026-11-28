@@ -346,6 +346,20 @@ jobs:
                   s,
               )
           patch_file('drivers/kernelsu/extension/kpm/kpm.c', fix_access_ok_2arg)
+          for _kpm_mk in ('drivers/kernelsu/extension/kpm/Makefile', 'drivers/kernelsu/extension/kpm/Kbuild', 'drivers/kernelsu/Kbuild'):
+              patch_file(_kpm_mk, lambda s: (s + '\nccflags-y += -std=gnu11\n') if '-std=gnu11' not in s else s)
+          def fix_super_access_c(s):
+              s = re.sub(r'\bfor\s*\(\s*size_t\s+([A-Za-z_][A-Za-z0-9_]*)\s*=', r'for (\1 =', s)
+              decls = []
+              for v in ('i', 'i1'):
+                  if re.search(r'\b' + v + r'\b', s) and ('size_t ' + v + ';') not in s:
+                      decls.append('size_t ' + v + ';')
+              if decls:
+                  m = re.search(r'\)\s*\{\s*\n', s)
+                  ins = '\n' + '\n'.join('    ' + d for d in decls) + '\n'
+                  s = (s[:m.end()] + ins + s[m.end():]) if m else ('\n'.join(decls) + '\n' + s)
+              return s
+          patch_file('drivers/kernelsu/extension/kpm/super_access.c', fix_super_access_c)
           patch_file('drivers/kernelsu/selinux/selinux.c', fix_selinux_c)
           def fix_rules_c(s: str) -> str:
               s = s.replace('selinux_policy_414_ptr_mutex', 'selinux_policy_414_lock')
