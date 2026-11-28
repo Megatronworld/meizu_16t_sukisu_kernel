@@ -321,7 +321,7 @@ jobs:
                   '#endif\n'
               )
               if '_KSU_414_HIDE_TYPES_H' not in s:
-                  s = hdr + s
+              s = hdr + s
               s = re.sub(r'(#define\s+ksu_avc_has_perm_compat\([^)]*\))[^\n]*', r'\1 avc_has_perm(__VA_ARGS__)', s)
               s = re.sub(r'(#define\s+ksu_security_bounded_transition_compat\([^)]*\))[^\n]*', r'\1 security_bounded_transition(__VA_ARGS__)', s)
               s = re.sub(r'(#define\s+ksu_security_validate_transition_compat\([^)]*\))[^\n]*', r'\1 security_validate_transition(__VA_ARGS__)', s)
