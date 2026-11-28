@@ -334,6 +334,18 @@ jobs:
               s = s.replace('context_struct_to_string(p, &entry->context, scontext, scontext_len)', '((scontext && (*scontext = NULL)), (scontext_len && (*scontext_len = 0)), 0)')
               return s
           patch_file('drivers/kernelsu/feature/selinux_hide.c', fix_selinux_hide_c)
+          def fix_avc_spoof_c(s: str) -> str:
+              s = re.sub(r'\bpr_(info|warn|err|notice|debug)_ratelimited\s*\(', r'pr_\1(', s)
+              s = re.sub(r'\bprintk_ratelimited\s*\(', 'printk(', s)
+              return s
+          patch_file('drivers/kernelsu/feature/avc_spoof.c', fix_avc_spoof_c)
+          def fix_access_ok_2arg(s: str) -> str:
+              return re.sub(
+                  r'\baccess_ok\s*\(\s*([^,()]+(?:\([^()]*\))?)\s*,\s*([^,()]+(?:\([^()]*\))?)\s*\)',
+                  r'access_ok(VERIFY_WRITE, \1, \2)',
+                  s,
+              )
+          patch_file('drivers/kernelsu/extension/kpm/kpm.c', fix_access_ok_2arg)
           patch_file('drivers/kernelsu/selinux/selinux.c', fix_selinux_c)
           def fix_rules_c(s: str) -> str:
               s = s.replace('selinux_policy_414_ptr_mutex', 'selinux_policy_414_lock')
